@@ -29,7 +29,6 @@ import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponse } from './entities/auth.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { ConvertTemporaryUserDto } from './dto/convert-temporary-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('Authentication')
@@ -346,8 +345,12 @@ export class AuthController {
   }
 
   @Post('send-phone-verification')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Send phone verification code' })
+  @ApiOperation({
+    summary: 'Send phone verification code (requires authentication)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Verification code sent successfully',
@@ -356,28 +359,38 @@ export class AuthController {
     status: 400,
     description: 'Phone number already registered or invalid',
   })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - requires authentication',
+  })
   async sendPhoneVerification(
+    @Request() req,
     @Body() sendPhoneVerificationDto: SendPhoneVerificationDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `📱 Phone verification request: ${sendPhoneVerificationDto.phone}`,
+        `📱 Phone verification request for user ${req.user.id}: ${sendPhoneVerificationDto.phone}`,
       );
     }
     const result = await this.authService.sendPhoneVerification(
+      req.user.id,
       sendPhoneVerificationDto,
     );
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `✅ Phone verification code sent: ${sendPhoneVerificationDto.phone}`,
+        `✅ Phone verification setup complete for user ${req.user.id}: ${sendPhoneVerificationDto.phone}`,
       );
     }
     return result;
   }
 
   @Post('verify-phone-code')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify phone verification code' })
+  @ApiOperation({
+    summary: 'Verify phone verification code (requires authentication)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Phone number verified successfully',
@@ -386,54 +399,28 @@ export class AuthController {
     status: 400,
     description: 'Invalid or expired verification code',
   })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - requires authentication',
+  })
   async verifyPhoneCode(
+    @Request() req,
     @Body() verifyPhoneCodeDto: VerifyPhoneCodeDto,
-  ): Promise<{ message: string; isTemporaryUser?: boolean; userId?: string }> {
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(
-        `📱 Phone code verification attempt: ${verifyPhoneCodeDto.phone}`,
-      );
-    }
-    const result = await this.authService.verifyPhoneCode(verifyPhoneCodeDto);
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Phone number verified: ${verifyPhoneCodeDto.phone}`);
-    }
-    return result;
-  }
-
-  @Post('convert-temporary-user')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Convert temporary user to real user after phone verification',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'User account created successfully',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid user data or user is not temporary',
-  })
-  async convertTemporaryUser(
-    @Body() convertTemporaryUserDto: ConvertTemporaryUserDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `🔄 Converting temporary user: ${convertTemporaryUserDto.userId} to ${convertTemporaryUserDto.email}`,
+        `📱 Phone code verification attempt for user ${req.user.id}: ${verifyPhoneCodeDto.phone}`,
       );
     }
-
-    const result = await this.authService.convertTemporaryUser(
-      convertTemporaryUserDto.userId,
-      convertTemporaryUserDto,
+    const result = await this.authService.verifyPhoneCode(
+      req.user.id,
+      verifyPhoneCodeDto,
     );
-
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `✅ Temporary user converted: ${convertTemporaryUserDto.email}`,
+        `✅ Phone number verified for user ${req.user.id}: ${verifyPhoneCodeDto.phone}`,
       );
     }
-
     return result;
   }
 

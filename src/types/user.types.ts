@@ -35,16 +35,46 @@ export interface User {
 export interface Profile {
   id: string;
   userId: string;
-  country?: string | null;
-  state?: string | null;
   city?: string | null;
+  state?: string | null;
+  country?: string | null;
   address?: string | null;
-  phone?: string | null;
-  profilePic?: string | null;
-  cvUrl?: string | null;
+  pictureUrl?: string | null;
+  resumeUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface UserPhoneNumber {
+  id: string;
+  userId: string;
+  profileId: string;
+  countryCode: string;
+  number: string;
+  isVerified: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type UserProfile = {
+  generalInfo?: UserGeneralInfo;
+  location?: UserLocation;
+  phoneNumber?: UserPhoneNumber;
+  pictureUrl?: string;
+  resumeUrl?: string;
+};
+
+export type UserGeneralInfo = {
+  firstName: string;
+  lastName: string;
+};
+
+export type UserLocation = {
+  city: string;
+  state: string;
+  country: string;
+  address: string;
+};
 
 export type VerificationCode = {
   id: string;

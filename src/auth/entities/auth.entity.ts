@@ -1,5 +1,9 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { User as UserType, UserRole, SocialProvider } from "../../types/user.types";
+import { ApiProperty } from '@nestjs/swagger';
+import {
+  User as UserType,
+  UserRole,
+  SocialProvider,
+} from '../../types/user.types';
 
 export class User implements UserType {
   @ApiProperty()
@@ -38,7 +42,4 @@ export class User implements UserType {
 export class AuthResponse {
   @ApiProperty()
   access_token: string;
-
-  @ApiProperty({ type: User })
-  user: Omit<User, "password">;
 }

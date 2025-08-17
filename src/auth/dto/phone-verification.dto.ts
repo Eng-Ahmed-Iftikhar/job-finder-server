@@ -9,6 +9,14 @@ export class SendPhoneVerificationDto {
   @IsPhoneNumber(undefined, { message: 'Please provide a valid phone number' })
   @IsNotEmpty({ message: 'Phone number is required' })
   phone: string;
+
+  @ApiProperty({
+    description: "Country code for phone number",
+    example: '+1',
+  })
+  @IsString({ message: 'Country code must be a string' })
+  @IsNotEmpty({ message: 'Country code is required' })
+  countryCode: string;
 }
 
 export class VerifyPhoneCodeDto {
@@ -19,6 +27,14 @@ export class VerifyPhoneCodeDto {
   @IsPhoneNumber(undefined, { message: 'Please provide a valid phone number' })
   @IsNotEmpty({ message: 'Phone number is required' })
   phone: string;
+
+  @ApiProperty({
+    description: "Country code for phone number",
+    example: '+1',
+  })
+  @IsString({ message: 'Country code must be a string' })
+  @IsNotEmpty({ message: 'Country code is required' })
+  countryCode: string;
 
   @ApiProperty({
     description: 'Verification code sent to phone',

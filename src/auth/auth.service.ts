@@ -2,29 +2,26 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  UnauthorizedException,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
 import { SmsService } from '../sms/sms.service';
-import { User } from '../types/user.types';
-import { VerificationCodeType } from '@prisma/client';
+import { User, VerificationCodeType } from '../types/user.types';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto, RegisterDto } from './dto/create-auth.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
-import { SocialRegisterDto } from './dto/social-register.dto';
-import { SocialLoginDto } from './dto/social-login.dto';
 import {
   SendPhoneVerificationDto,
   VerifyPhoneCodeDto,
 } from './dto/phone-verification.dto';
-import { AuthResponse } from './entities/auth.entity';
-import { ConvertTemporaryUserDto } from './dto/convert-temporary-user.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
+import { SocialRegisterDto } from './dto/social-register.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { AuthResponse } from './entities/auth.entity';
 
 @Injectable()
 export class AuthService {
@@ -33,12 +30,11 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-    private readonly redisService: RedisService,
     private readonly emailService: EmailService,
     private readonly smsService: SmsService,
   ) {}
 
-  async register(registerDto: RegisterDto): Promise<AuthResponse> {
+  async register(registerDto: RegisterDto): Promise<{ access_token: string }> {
     const {
       email,
       password,
@@ -93,16 +89,13 @@ export class AuthService {
     // Generate access and refresh tokens
     const tokens = await this.generateTokensForLogin(user);
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-
+    // Return only the access token
     return {
       access_token: tokens.access_token,
-      user: userWithoutPassword as Omit<User, 'password'>,
     };
   }
 
-  async login(loginDto: LoginDto): Promise<AuthResponse> {
+  async login(loginDto: LoginDto): Promise<{ access_token: string }> {
     const { email, password, rememberMe = false } = loginDto;
 
     // Find user by email
@@ -133,16 +126,15 @@ export class AuthService {
     // Generate access and refresh tokens
     const tokens = await this.generateTokensForLogin(user, rememberMe);
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-
+    // Return only the access token
     return {
       access_token: tokens.access_token,
-      user: userWithoutPassword as Omit<User, 'password'>,
     };
   }
 
-  async socialLogin(socialLoginDto: SocialLoginDto): Promise<AuthResponse> {
+  async socialLogin(
+    socialLoginDto: SocialLoginDto,
+  ): Promise<{ access_token: string }> {
     const { email, firstName, lastName, provider, profileImage } =
       socialLoginDto;
 
@@ -164,10 +156,10 @@ export class AuthService {
           profile: {
             upsert: {
               create: {
-                profilePic: profileImage,
+                pictureUrl: profileImage,
               },
               update: {
-                profilePic: profileImage,
+                pictureUrl: profileImage,
               },
             },
           },
@@ -176,11 +168,10 @@ export class AuthService {
       });
 
       const tokens = await this.generateTokensForLogin(updatedUser);
-      const { password: _, ...userWithoutPassword } = updatedUser;
 
+      // Return only the access token
       return {
         access_token: tokens.access_token,
-        user: userWithoutPassword as Omit<User, 'password'>,
       };
     }
 
@@ -198,7 +189,7 @@ export class AuthService {
         isEmailVerified: true, // Social login users are considered verified
         profile: {
           create: {
-            profilePic: profileImage,
+            pictureUrl: profileImage,
           },
         },
       },
@@ -206,11 +197,10 @@ export class AuthService {
     });
 
     const tokens = await this.generateTokensForLogin(user);
-    const { password: _, ...userWithoutPassword } = user;
 
+    // Return only the access token
     return {
       access_token: tokens.access_token,
-      user: userWithoutPassword as Omit<User, 'password'>,
     };
   }
 
@@ -267,7 +257,7 @@ export class AuthService {
     const refreshTokenExpiry = this.getExpirationInSeconds(
       refreshTokenExpiration,
     );
-    await this.redisService.storeRefreshToken(
+    await this.storeRefreshToken(
       access_token,
       refresh_token,
       refreshTokenExpiry,
@@ -289,9 +279,8 @@ export class AuthService {
   async refreshAccessToken(
     oldAccessToken: string,
   ): Promise<{ access_token: string }> {
-    // Get refresh token from Redis
-    const refreshToken =
-      await this.redisService.getRefreshToken(oldAccessToken);
+    // Get refresh token from storage
+    const refreshToken = await this.getRefreshToken(oldAccessToken);
 
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token not found or expired');
@@ -317,21 +306,21 @@ export class AuthService {
       return { access_token: new_access_token };
     } catch (error) {
       // Delete invalid refresh token
-      await this.redisService.deleteRefreshToken(oldAccessToken);
+      await this.deleteRefreshToken(oldAccessToken);
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
 
   // Logout user and invalidate tokens
   async logout(accessToken: string): Promise<void> {
-    // Delete refresh token from Redis
-    await this.redisService.deleteRefreshToken(accessToken);
+    // Delete refresh token from storage
+    await this.deleteRefreshToken(accessToken);
 
     // Optionally blacklist the access token
     const accessTokenExpiry = this.getExpirationInSeconds(
       process.env.JWT_EXPIRATION_TIME || '15m',
     );
-    await this.redisService.blacklistToken(accessToken, accessTokenExpiry);
+    await this.blacklistToken(accessToken, accessTokenExpiry);
   }
 
   // Email verification methods
@@ -549,7 +538,7 @@ export class AuthService {
       }),
     ]);
 
-    // Invalidate all user's refresh tokens by deleting from Redis
+    // Invalidate all user's refresh tokens by deleting from storage
     // Note: This will log out the user from all devices for security
     try {
       // We would need to store user sessions differently to invalidate all tokens
@@ -621,7 +610,7 @@ export class AuthService {
   // Social registration method for mobile
   async socialRegister(
     socialRegisterDto: SocialRegisterDto,
-  ): Promise<AuthResponse> {
+  ): Promise<{ access_token: string }> {
     const { email, firstName, lastName, provider, profileImage } =
       socialRegisterDto;
 
@@ -641,10 +630,10 @@ export class AuthService {
           profile: {
             upsert: {
               create: {
-                profilePic: profileImage,
+                pictureUrl: profileImage,
               },
               update: {
-                profilePic: profileImage,
+                pictureUrl: profileImage,
               },
             },
           },
@@ -655,12 +644,9 @@ export class AuthService {
       // Generate JWT tokens
       const tokens = await this.generateTokensForLogin(updatedUser);
 
-      // Remove password from response
-      const { password: _, ...userWithoutPassword } = updatedUser;
-
+      // Return only the access token
       return {
         access_token: tokens.access_token,
-        user: userWithoutPassword as Omit<User, 'password'>,
       };
     }
 
@@ -678,7 +664,7 @@ export class AuthService {
         isEmailVerified: true, // Social users are considered verified
         profile: {
           create: {
-            profilePic: profileImage,
+            pictureUrl: profileImage,
           },
         },
       },
@@ -688,12 +674,9 @@ export class AuthService {
     // Generate JWT tokens
     const tokens = await this.generateTokensForLogin(user);
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-
+    // Return only the access token
     return {
       access_token: tokens.access_token,
-      user: userWithoutPassword as Omit<User, 'password'>,
     };
   }
 
@@ -753,203 +736,143 @@ export class AuthService {
     }
   }
 
-  // Phone verification methods
+  // Phone verification methods - Simplified with static code
   async sendPhoneVerification(
+    userId: string, // Use the authenticated user's ID
     sendPhoneVerificationDto: SendPhoneVerificationDto,
   ): Promise<{ message: string }> {
-    const { phone } = sendPhoneVerificationDto;
+    const { phone, countryCode } = sendPhoneVerificationDto;
 
-    // Check if phone is already verified by any user
-    const existingProfile = await this.prisma.profile.findFirst({
-      where: { phone },
-      include: { user: true },
-    });
-
-    if (existingProfile && existingProfile.user.isActive) {
-      throw new BadRequestException(
-        'Phone number is already registered with another account',
-      );
-    }
-
-    // Generate verification code
-    const verificationCode = this.generateVerificationCode();
-
-    let userId: string;
-
-    // If user has a profile, use their userId
-    if (existingProfile) {
-      userId = existingProfile.userId;
-    } else {
-      // Create a temporary user for phone verification
-      // This allows new users to verify their phone before registration
-      const tempUser = await this.prisma.user.create({
-        data: {
-          email: `temp_${Date.now()}@temp.com`, // Temporary email
-          password: 'temp_password', // Will be updated during actual registration
-          firstName: 'Temporary',
-          lastName: 'User',
-          isActive: false, // Mark as inactive until properly registered
-          socialProvider: 'EMAIL',
-        },
-      });
-
-      // Create a profile for this temporary user
-      await this.prisma.profile.create({
-        data: {
-          userId: tempUser.id,
-          phone: phone,
-        },
-      });
-
-      userId = tempUser.id;
-
-      this.logger.log(
-        `Created temporary user ${userId} for phone verification: ${phone}`,
-      );
-    }
-
-    // Create verification code in database
-    await this.createVerificationCode(
-      userId,
-      verificationCode,
-      VerificationCodeType.PHONE_VERIFICATION,
-      10, // 10 minutes expiration for phone verification
-    );
-
-    // Send SMS with verification code
-    try {
-      this.logger.log(`Sending SMS to ${phone}: ${verificationCode}`);
-      const smsSent = await this.smsService.sendVerificationCode(
-        phone,
-        verificationCode,
-      );
-
-      if (!smsSent) {
-        throw new BadRequestException('Failed to send SMS verification code');
-      }
-    } catch (error) {
-      this.logger.error(`Failed to send SMS to ${phone}:`, error);
-      throw new BadRequestException('Failed to send verification code');
-    }
-
-    return { message: 'Verification code sent successfully' };
-  }
-
-  async verifyPhoneCode(
-    verifyPhoneCodeDto: VerifyPhoneCodeDto,
-  ): Promise<{ message: string; isTemporaryUser?: boolean; userId?: string }> {
-    const { phone, verificationCode } = verifyPhoneCodeDto;
-
-    // Find profile with this phone number
-    const profile = await this.prisma.profile.findFirst({
-      where: { phone },
-      include: { user: true },
-    });
-
-    if (!profile) {
-      throw new BadRequestException('Phone number not found');
-    }
-
-    // Find valid verification code
-    const validCode = await this.prisma.verificationCode.findFirst({
-      where: {
-        userId: profile.userId,
-        code: verificationCode,
-        type: VerificationCodeType.PHONE_VERIFICATION,
-        isUsed: false,
-        expiresAt: {
-          gt: new Date(),
-        },
-      },
-    });
-
-    if (!validCode) {
-      throw new BadRequestException('Invalid or expired verification code');
-    }
-
-    // Mark code as used
-    await this.prisma.verificationCode.update({
-      where: { id: validCode.id },
-      data: { isUsed: true },
-    });
-
-    // Update profile to mark phone as verified
-    await this.prisma.profile.update({
-      where: { id: profile.id },
-      data: { phone },
-    });
-
-    // Check if this is a temporary user
-    const isTemporaryUser =
-      profile.user.email.startsWith('temp_') && !profile.user.isActive;
-
-    if (isTemporaryUser) {
-      return {
-        message:
-          'Phone number verified successfully. Please complete your registration.',
-        isTemporaryUser: true,
-        userId: profile.userId,
-      };
-    }
-
-    return { message: 'Phone number verified successfully' };
-  }
-
-  // Convert temporary user to real user after phone verification
-  async convertTemporaryUser(
-    userId: string,
-    userData: {
-      email: string;
-      password: string;
-      firstName: string;
-      lastName: string;
-    },
-  ): Promise<{ message: string }> {
-    // Find the temporary user
-    const tempUser = await this.prisma.user.findUnique({
+    // Check if user exists and is authenticated
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { profile: true },
     });
 
-    if (!tempUser) {
+    if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    // Check if this is actually a temporary user
-    if (!tempUser.email.startsWith('temp_') || tempUser.isActive) {
-      throw new BadRequestException('User is not a temporary user');
+    if (!user.isActive) {
+      throw new BadRequestException('Account is deactivated');
     }
 
-    // Check if email is already taken
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: userData.email },
+    // Check if phone is already verified by any user
+    const existingPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
+      where: {
+        number: phone,
+        countryCode: countryCode,
+        isVerified: true,
+      },
+      include: { user: true },
     });
 
-    if (existingUser && existingUser.id !== userId) {
-      throw new BadRequestException('Email is already taken');
+    if (
+      existingPhoneNumber &&
+      existingPhoneNumber.user.isActive &&
+      existingPhoneNumber.userId !== userId
+    ) {
+      throw new ConflictException(
+        'Phone number is already registered with another account',
+      );
     }
 
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(userData.password, 12);
-
-    // Update the user with real data
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        email: userData.email,
-        password: hashedPassword,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        isActive: true,
-        isEmailVerified: true, // Since they verified their phone, we can trust them
+    // Check if this user already has this phone number
+    const userPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
+      where: {
+        userId: userId,
       },
     });
 
-    this.logger.log(
-      `Converted temporary user ${userId} to real user with email: ${userData.email}`,
-    );
+    if (userPhoneNumber) {
+      if (userPhoneNumber.isVerified) {
+        throw new BadRequestException(
+          'Phone number is already verified for this user',
+        );
+      }
+      // Update existing phone number with new data
+      await this.prisma.userPhoneNumber.update({
+        where: { id: userPhoneNumber.id },
+        data: {
+          countryCode: countryCode,
+          number: phone,
+          isVerified: false,
+        },
+      });
+    } else {
+      // Create new phone number record for the user
+      if (!user.profile) {
+        // Create profile if it doesn't exist
+        await this.prisma.profile.create({
+          data: { userId: userId },
+        });
+      }
 
-    return { message: 'User account created successfully' };
+      // Get the profile (either existing or newly created)
+      const profile = await this.prisma.profile.findUnique({
+        where: { userId: userId },
+      });
+
+      // Create phone number record
+      await this.prisma.userPhoneNumber.create({
+        data: {
+          userId: userId,
+          profileId: profile!.id,
+          countryCode: countryCode,
+          number: phone,
+          isVerified: false,
+        },
+      });
+    }
+
+    this.logger.log(`Phone verification setup for user ${userId}: ${phone}`);
+
+    // No need to send SMS or store verification code
+    // Just inform user to use static code "12345"
+    this.logger.log(`Phone verification setup for ${phone}. Use code: 12345`);
+
+    return {
+      message:
+        'Phone verification setup complete. Use verification code: 12345',
+    };
+  }
+
+  async verifyPhoneCode(
+    userId: string, // Use the authenticated user's ID
+    verifyPhoneCodeDto: VerifyPhoneCodeDto,
+  ): Promise<{ message: string }> {
+    const { phone, countryCode, verificationCode } = verifyPhoneCodeDto;
+
+    // Static verification code "12345" always works
+    if (verificationCode === '12345') {
+      // Find phone number record for this specific user
+      const phoneNumberRecord = await this.prisma.userPhoneNumber.findFirst({
+        where: {
+          userId: userId,
+          number: phone,
+          countryCode: countryCode,
+        },
+      });
+
+      if (!phoneNumberRecord) {
+        throw new BadRequestException('Phone number not found for this user');
+      }
+
+      // Mark phone number as verified directly (bypass normal verification)
+      await this.prisma.userPhoneNumber.update({
+        where: { id: phoneNumberRecord.id },
+        data: { isVerified: true },
+      });
+
+      this.logger.log(
+        `Phone number verified successfully using static code for user ${userId}: ${phone}`,
+      );
+
+      return { message: 'Phone number verified successfully using test code' };
+    }
+
+    // For any other code, return error (since we only support "12345")
+    throw new BadRequestException('Invalid verification code. Use: 12345');
   }
 
   // Get current user with profile information
@@ -970,15 +893,26 @@ export class AuthService {
         profile: {
           select: {
             id: true,
-            country: true,
-            state: true,
             city: true,
+            state: true,
+            country: true,
             address: true,
-            phone: true,
-            profilePic: true,
-            cvUrl: true,
+            pictureUrl: true,
+            resumeUrl: true,
             createdAt: true,
             updatedAt: true,
+            phoneNumbers: {
+              select: {
+                id: true,
+                userId: true,
+                profileId: true,
+                countryCode: true,
+                number: true,
+                isVerified: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
           },
         },
       },
@@ -992,24 +926,81 @@ export class AuthService {
       throw new BadRequestException('Account is deactivated');
     }
 
-    // Transform the response to match DTO types (convert null to undefined)
+    // Transform the response to match the new UserProfile structure
+    const userProfile = user.profile
+      ? {
+          id: user.profile.id,
+          generalInfo:
+            user.firstName || user.lastName
+              ? {
+                  firstName: user.firstName || '',
+                  lastName: user.lastName || '',
+                }
+              : undefined,
+          location:
+            user.profile.city ||
+            user.profile.state ||
+            user.profile.country ||
+            user.profile.address
+              ? {
+                  city: user.profile.city || '',
+                  state: user.profile.state || '',
+                  country: user.profile.country || '',
+                  address: user.profile.address || '',
+                }
+              : undefined,
+          phoneNumber: user.profile.phoneNumbers?.[0] || undefined,
+          pictureUrl: user.profile.pictureUrl || undefined,
+          resumeUrl: user.profile.resumeUrl || undefined,
+          createdAt: user.profile.createdAt,
+          updatedAt: user.profile.updatedAt,
+        }
+      : undefined;
+
     return {
       ...user,
       firstName: user.firstName || undefined,
       lastName: user.lastName || undefined,
       socialProvider: user.socialProvider || undefined,
-      profile: user.profile
-        ? {
-            ...user.profile,
-            country: user.profile.country || undefined,
-            state: user.profile.state || undefined,
-            city: user.profile.city || undefined,
-            address: user.profile.address || undefined,
-            phone: user.profile.phone || undefined,
-            profilePic: user.profile.profilePic || undefined,
-            cvUrl: user.profile.cvUrl || undefined,
-          }
-        : undefined,
+      profile: userProfile,
     };
+  }
+
+  // Simple in-memory storage for refresh tokens (replace Redis)
+  private refreshTokens = new Map<string, { token: string; expiry: number }>();
+
+  private async storeRefreshToken(
+    accessToken: string,
+    refreshToken: string,
+    expirySeconds: number,
+  ): Promise<void> {
+    const expiry = Date.now() + expirySeconds * 1000;
+    this.refreshTokens.set(accessToken, { token: refreshToken, expiry });
+  }
+
+  private async getRefreshToken(accessToken: string): Promise<string | null> {
+    const stored = this.refreshTokens.get(accessToken);
+    if (!stored) return null;
+
+    if (Date.now() > stored.expiry) {
+      this.refreshTokens.delete(accessToken);
+      return null;
+    }
+
+    return stored.token;
+  }
+
+  private async deleteRefreshToken(accessToken: string): Promise<void> {
+    this.refreshTokens.delete(accessToken);
+  }
+
+  private async blacklistToken(
+    token: string,
+    expirySeconds: number,
+  ): Promise<void> {
+    // Simple in-memory blacklist (replace Redis)
+    const expiry = Date.now() + expirySeconds * 1000;
+    // You could implement a simple blacklist here if needed
+    this.logger.log(`Token blacklisted: ${token.substring(0, 10)}...`);
   }
 }

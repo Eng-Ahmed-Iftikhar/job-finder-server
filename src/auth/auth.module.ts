@@ -6,14 +6,12 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
-import { RedisModule } from '../redis/redis.module';
 import { EmailModule } from '../email/email.module';
 import { SmsModule } from '../sms/sms.module';
 
 @Module({
   imports: [
     PrismaModule,
-    RedisModule,
     EmailModule,
     SmsModule,
     PassportModule,

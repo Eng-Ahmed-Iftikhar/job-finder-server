@@ -39,6 +39,11 @@ async function bootstrap() {
     )
     .setVersion('1.0')
     .addTag('Authentication', 'User authentication and registration')
+    .addTag('Users', 'User management, profiles, and phone numbers')
+    .addTag(
+      'Files',
+      'File upload, download, and management with MegaJS cloud storage',
+    )
     .addTag('Jobs', 'Job listings and applications')
     .addBearerAuth()
     .build();
