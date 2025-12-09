@@ -9,23 +9,11 @@ export class FileResponseDto {
   id: string;
 
   @ApiProperty({
-    description: 'Original filename',
-    example: 'profile-picture.jpg',
-  })
-  originalName: string;
-
-  @ApiProperty({
     description: 'File type category',
     enum: FileType,
     example: FileType.IMAGE,
   })
   fileType: FileType;
-
-  @ApiProperty({
-    description: 'File MIME type',
-    example: 'image/jpeg',
-  })
-  mimeType: string;
 
   @ApiProperty({
     description: 'File size in bytes',

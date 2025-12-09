@@ -49,9 +49,9 @@ export class FilesController {
 
   @Post('upload')
   @ApiOperation({
-    summary: 'Upload a file to Firebase Storage',
+    summary: 'Upload a file to Cloudinary',
     description:
-      'Upload any type of file (image, document, video, audio) to Firebase Storage. Returns the public URL of the uploaded file.',
+      'Upload any type of file (image, document, video, audio) to Cloudinary. Returns the public URL of the uploaded file.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -152,12 +152,12 @@ export class FilesController {
   @ApiOperation({
     summary: 'Get file information by ID',
     description:
-      'Retrieve detailed information about a specific file using its Mega file ID.',
+      'Retrieve detailed information about a specific file using its Cloudinary public ID.',
   })
   @ApiParam({
     name: 'fileId',
-    description: 'Mega file ID',
-    example: 'clx1234567890',
+    description: 'Cloudinary public ID',
+    example: 'users/user123/profile-image',
   })
   @ApiResponse({
     status: 200,
@@ -184,12 +184,12 @@ export class FilesController {
   @ApiOperation({
     summary: 'Download a file by ID',
     description:
-      'Download a file from Mega storage. The file will be streamed to the client.',
+      'Download a file from Cloudinary storage. The file will be streamed to the client.',
   })
   @ApiParam({
     name: 'fileId',
-    description: 'Mega file ID',
-    example: 'clx1234567890',
+    description: 'Cloudinary public ID',
+    example: 'users/user123/document.pdf',
   })
   @ApiResponse({
     status: 200,
@@ -231,12 +231,12 @@ export class FilesController {
   @ApiOperation({
     summary: 'Delete a file by ID',
     description:
-      'Delete a file from Mega storage. Users can only delete their own files.',
+      'Delete a file from Cloudinary storage. Users can only delete their own files.',
   })
   @ApiParam({
     name: 'fileId',
-    description: 'Mega file ID',
-    example: 'clx1234567890',
+    description: 'Cloudinary public ID',
+    example: 'users/user123/image.jpg',
   })
   @ApiResponse({
     status: 204,
@@ -280,8 +280,8 @@ export class FilesController {
   })
   @ApiParam({
     name: 'fileId',
-    description: 'Mega file ID',
-    example: 'clx1234567890',
+    description: 'Cloudinary public ID',
+    example: 'users/user123/avatar.jpg',
   })
   @ApiResponse({
     status: 200,
@@ -361,12 +361,13 @@ export class FilesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete any file by ID (Admin only)',
-    description: 'Delete any file from Mega storage. Admin access required.',
+    description:
+      'Delete any file from Cloudinary storage. Admin access required.',
   })
   @ApiParam({
     name: 'fileId',
-    description: 'Mega file ID',
-    example: 'clx1234567890',
+    description: 'Cloudinary public ID',
+    example: 'users/user123/document.pdf',
   })
   @ApiResponse({
     status: 204,

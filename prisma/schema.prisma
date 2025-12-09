@@ -18,11 +18,7 @@ model User {
   id              String    @id @default(cuid())
   email           String    @unique
   password        String?   // Made optional for social login users
-  firstName       String?
-  lastName        String?
   isActive        Boolean   @default(true)
-  isEmailVerified Boolean   @default(false)
-  role            UserRole  @default(USER)
   
   // Social login fields
   socialProvider  SocialProvider?
@@ -57,16 +53,20 @@ model VerificationCode {
 
 // Profile model for user details
 model Profile {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  city        String?
-  state       String?
-  country     String?
-  address     String?
-  pictureUrl  String?
-  resumeUrl   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  firstName       String?
+  lastName        String?
+  isEmailVerified Boolean  @default(false)
+  role            UserRole @default(USER)
+  city            String?
+  state           String?
+  country         String?
+  address         String?
+  pictureUrl      String?
+  resumeUrl       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

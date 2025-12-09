@@ -9,6 +9,7 @@ import {
   Request,
   Get,
 } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -174,14 +175,14 @@ export class AuthController {
     status: 401,
     description: 'Unauthorized',
   })
-  async logout(@Request() req: any): Promise<{ message: string }> {
-    const accessToken = req.headers.authorization?.replace('Bearer ', '');
+  async logout(@Request() req: ExpressRequest): Promise<{ message: string }> {
+    const accessToken = req.headers.authorization?.replace('Bearer ', '') || '';
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`🚪 Logout attempt for user: ${req.user.email}`);
+      this.logger.log(`🚪 Logout attempt for user: ${req.user?.email}`);
     }
     await this.authService.logout(accessToken);
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ User logged out successfully: ${req.user.email}`);
+      this.logger.log(`✅ User logged out successfully: ${req.user?.email}`);
     }
     return { message: 'Logged out successfully' };
   }
@@ -204,18 +205,18 @@ export class AuthController {
     description: 'Unauthorized',
   })
   async verifyEmail(
-    @Request() req: any,
+    @Request() req: ExpressRequest,
     @Body() verifyEmailDto: VerifyEmailDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`📧 Email verification attempt: ${req.user.email}`);
+      this.logger.log(`📧 Email verification attempt: ${req.user?.email}`);
     }
     const result = await this.authService.verifyEmail(
-      req.user.id,
+      req.user!.id,
       verifyEmailDto.verificationCode,
     );
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Email verified successfully: ${req.user.email}`);
+      this.logger.log(`✅ Email verified successfully: ${req.user?.email}`);
     }
     return result;
   }
@@ -238,14 +239,14 @@ export class AuthController {
     description: 'Unauthorized',
   })
   async resendVerificationCode(
-    @Request() req: any,
+    @Request() req: ExpressRequest,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`🔄 Resend verification code: ${req.user.email}`);
+      this.logger.log(`🔄 Resend verification code: ${req.user?.email}`);
     }
-    const result = await this.authService.resendVerificationCode(req.user.id);
+    const result = await this.authService.resendVerificationCode(req.user!.id);
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Verification code resent: ${req.user.email}`);
+      this.logger.log(`✅ Verification code resent: ${req.user?.email}`);
     }
     return result;
   }
@@ -294,18 +295,18 @@ export class AuthController {
     description: 'Unauthorized',
   })
   async resetPassword(
-    @Request() req: any,
+    @Request() req: ExpressRequest,
     @Body() resetPasswordDto: ResetPasswordDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`🔐 Password reset attempt: ${req.user.email}`);
+      this.logger.log(`🔐 Password reset attempt: ${req.user?.email}`);
     }
     const result = await this.authService.resetPassword(
-      req.user.id,
+      req.user!.id,
       resetPasswordDto,
     );
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Password reset successfully: ${req.user.email}`);
+      this.logger.log(`✅ Password reset successfully: ${req.user?.email}`);
     }
     return result;
   }
@@ -328,18 +329,18 @@ export class AuthController {
     description: 'Unauthorized',
   })
   async changePassword(
-    @Request() req: any,
+    @Request() req: ExpressRequest,
     @Body() changePasswordDto: ChangePasswordDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`🔐 Password change attempt: ${req.user.email}`);
+      this.logger.log(`🔐 Password change attempt: ${req.user?.email}`);
     }
     const result = await this.authService.changePassword(
-      req.user.id,
+      req.user!.id,
       changePasswordDto,
     );
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Password changed successfully: ${req.user.email}`);
+      this.logger.log(`✅ Password changed successfully: ${req.user?.email}`);
     }
     return result;
   }
@@ -364,21 +365,21 @@ export class AuthController {
     description: 'Unauthorized - requires authentication',
   })
   async sendPhoneVerification(
-    @Request() req,
+    @Request() req: ExpressRequest,
     @Body() sendPhoneVerificationDto: SendPhoneVerificationDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `📱 Phone verification request for user ${req.user.id}: ${sendPhoneVerificationDto.phone}`,
+        `📱 Phone verification request for user ${req.user?.id}: ${sendPhoneVerificationDto.phone}`,
       );
     }
     const result = await this.authService.sendPhoneVerification(
-      req.user.id,
+      req.user!.id,
       sendPhoneVerificationDto,
     );
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `✅ Phone verification setup complete for user ${req.user.id}: ${sendPhoneVerificationDto.phone}`,
+        `✅ Phone verification setup complete for user ${req.user?.id}: ${sendPhoneVerificationDto.phone}`,
       );
     }
     return result;
@@ -404,21 +405,21 @@ export class AuthController {
     description: 'Unauthorized - requires authentication',
   })
   async verifyPhoneCode(
-    @Request() req,
+    @Request() req: ExpressRequest,
     @Body() verifyPhoneCodeDto: VerifyPhoneCodeDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `📱 Phone code verification attempt for user ${req.user.id}: ${verifyPhoneCodeDto.phone}`,
+        `📱 Phone code verification attempt for user ${req.user?.id}: ${verifyPhoneCodeDto.phone}`,
       );
     }
     const result = await this.authService.verifyPhoneCode(
-      req.user.id,
+      req.user!.id,
       verifyPhoneCodeDto,
     );
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `✅ Phone number verified for user ${req.user.id}: ${verifyPhoneCodeDto.phone}`,
+        `✅ Phone number verified for user ${req.user?.id}: ${verifyPhoneCodeDto.phone}`,
       );
     }
     return result;
@@ -445,15 +446,17 @@ export class AuthController {
     status: 400,
     description: 'Bad Request - User not found or account deactivated',
   })
-  async getCurrentUser(@Request() req: any): Promise<UserResponseDto> {
+  async getCurrentUser(
+    @Request() req: ExpressRequest,
+  ): Promise<UserResponseDto> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`👤 Getting user info for: ${req.user.email}`);
+      this.logger.log(`👤 Getting user info for: ${req.user?.email}`);
     }
 
-    const user = await this.authService.getCurrentUser(req.user.id);
+    const user = await this.authService.getCurrentUser(req.user!.id);
 
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ User info retrieved for: ${req.user.email}`);
+      this.logger.log(`✅ User info retrieved for: ${req.user?.email}`);
     }
 
     return user;

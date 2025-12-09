@@ -14,20 +14,8 @@ export class User implements UserType {
 
   password?: string | null; // Hidden from API responses, now optional
 
-  @ApiProperty({ required: false })
-  firstName?: string | null;
-
-  @ApiProperty({ required: false })
-  lastName?: string | null;
-
   @ApiProperty()
   isActive: boolean;
-
-  @ApiProperty()
-  isEmailVerified: boolean;
-
-  @ApiProperty({ enum: UserRole })
-  role: UserRole;
 
   @ApiProperty({ enum: SocialProvider, required: false })
   socialProvider?: SocialProvider | null;
@@ -37,6 +25,8 @@ export class User implements UserType {
 
   @ApiProperty()
   updatedAt: Date;
+
+  profile?: any | null; // Profile relation
 }
 
 export class AuthResponse {

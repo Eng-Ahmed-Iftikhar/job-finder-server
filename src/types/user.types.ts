@@ -22,19 +22,20 @@ export interface User {
   id: string;
   email: string;
   password?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
   isActive: boolean;
-  isEmailVerified: boolean;
-  role: UserRole;
   socialProvider?: SocialProvider | null;
   createdAt: Date;
   updatedAt: Date;
+  profile?: Profile | null;
 }
 
 export interface Profile {
   id: string;
   userId: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  isEmailVerified: boolean;
+  role: UserRole;
   city?: string | null;
   state?: string | null;
   country?: string | null;

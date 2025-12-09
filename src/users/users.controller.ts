@@ -108,6 +108,51 @@ export class UsersController {
     return this.usersService.findUserById(req.user.id);
   }
 
+  @Put('me/resume')
+  @ApiOperation({ summary: 'Update current user resume URL' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        resumeUrl: {
+          type: 'string',
+          description: 'URL of the resume file',
+          example: 'https://cloudinary.com/users/user123/resume.pdf',
+        },
+      },
+      required: ['resumeUrl'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resume URL updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        resumeUrl: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  async updateCurrentUserResume(
+    @Request() req,
+    @Body() body: { resumeUrl: string },
+  ) {
+    if (!body.resumeUrl) {
+      throw new BadRequestException('resumeUrl is required');
+    }
+
+    const updatedProfile = await this.usersService.updateProfile(req.user.id, {
+      resumeUrl: body.resumeUrl,
+    });
+
+    return {
+      resumeUrl: updatedProfile.resumeUrl,
+    };
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Get user by ID (Admin only)' })

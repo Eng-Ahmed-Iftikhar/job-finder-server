@@ -12,6 +12,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
 import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
 import * as bcrypt from 'bcryptjs';
+import { UserRole } from '../types/user.types';
+import { $Enums } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -37,24 +39,38 @@ export class UsersService {
       hashedPassword = await bcrypt.hash(password, 12);
     }
 
-    // Create user
+    // Extract profile-related fields
+    const { firstName, lastName, ...userOnlyData } = userData;
+
+    // Create user with profile
     const user = await this.prisma.user.create({
       data: {
-        ...userData,
+        ...userOnlyData,
         email,
         password: hashedPassword,
+        profile: {
+          create: {
+            firstName,
+            lastName,
+            role: UserRole.USER,
+          },
+        },
       },
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         socialProvider: true,
         isActive: true,
-        isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            role: true,
+            isEmailVerified: true,
+          },
+        },
       },
     });
 
@@ -66,17 +82,17 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         socialProvider: true,
         isActive: true,
-        isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
         profile: {
           select: {
             id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            isEmailVerified: true,
             city: true,
             state: true,
             country: true,
@@ -95,17 +111,17 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         socialProvider: true,
         isActive: true,
-        isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
         profile: {
           select: {
             id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            isEmailVerified: true,
             city: true,
             state: true,
             country: true,
@@ -140,17 +156,17 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         socialProvider: true,
         isActive: true,
-        isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
         profile: {
           select: {
             id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            isEmailVerified: true,
             city: true,
             state: true,
             country: true,
@@ -170,7 +186,8 @@ export class UsersService {
   }
 
   async updateUser(id: string, updateUserDto: UpdateUserDto) {
-    const { email, ...updateData } = updateUserDto;
+    const { email, firstName, lastName, role, isEmailVerified, ...updateData } =
+      updateUserDto;
 
     // If email is being updated, check if it's already taken
     if (email) {
@@ -183,20 +200,47 @@ export class UsersService {
       }
     }
 
+    // Prepare profile updates (only non-id fields)
+    const profileData: {
+      firstName: string | null;
+      lastName: string | null;
+      role?: $Enums.UserRole;
+      isEmailVerified?: boolean;
+    } = {
+      firstName: null,
+      lastName: null,
+    };
+    if (firstName) profileData.firstName = firstName;
+    if (lastName) profileData.lastName = lastName;
+    if (role) profileData.role = role;
+    if (isEmailVerified) profileData.isEmailVerified = isEmailVerified;
+
     const user = await this.prisma.user.update({
       where: { id },
-      data: updateData,
+      data: {
+        ...updateData,
+        ...(email && { email }),
+        ...(Object.keys(profileData).length > 0 && {
+          profile: {
+            update: profileData,
+          },
+        }),
+      },
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         socialProvider: true,
         isActive: true,
-        isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            role: true,
+            isEmailVerified: true,
+          },
+        },
       },
     });
 
@@ -448,7 +492,7 @@ export class UsersService {
     const activeUsers = await this.prisma.user.count({
       where: { isActive: true },
     });
-    const verifiedUsers = await this.prisma.user.count({
+    const verifiedUsers = await this.prisma.profile.count({
       where: { isEmailVerified: true },
     });
     const usersWithProfiles = await this.prisma.profile.count();
@@ -467,18 +511,22 @@ export class UsersService {
       where: {
         OR: [
           { email: { contains: query, mode: 'insensitive' } },
-          { firstName: { contains: query, mode: 'insensitive' } },
-          { lastName: { contains: query, mode: 'insensitive' } },
+          { profile: { firstName: { contains: query, mode: 'insensitive' } } },
+          { profile: { lastName: { contains: query, mode: 'insensitive' } } },
         ],
       },
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         isActive: true,
         createdAt: true,
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
+        },
       },
       take: 20, // Limit results
     });

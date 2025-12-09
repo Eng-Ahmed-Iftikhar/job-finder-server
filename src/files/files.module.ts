@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { FilesController } from './files.controller';
 import { FilesService } from './files.service';
-import { MegaModule } from '../mega/mega.module';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
-  imports: [MegaModule],
+  imports: [CloudinaryModule],
   controllers: [FilesController],
   providers: [FilesService],
   exports: [FilesService],

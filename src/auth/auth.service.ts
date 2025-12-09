@@ -9,8 +9,9 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { SmsService } from '../sms/sms.service';
-import { User, VerificationCodeType } from '../types/user.types';
+import { Profile, User, VerificationCodeType } from '../types/user.types';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto, RegisterDto } from './dto/create-auth.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
@@ -20,8 +21,11 @@ import {
 } from './dto/phone-verification.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
 import { SocialRegisterDto } from './dto/social-register.dto';
-import { UserResponseDto } from './dto/user-response.dto';
-import { AuthResponse } from './entities/auth.entity';
+import {
+  ProfileResponseDto,
+  UserPhoneNumberResponseDto,
+  UserResponseDto,
+} from './dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +36,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
     private readonly smsService: SmsService,
+    private readonly redisService: RedisService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<{ access_token: string }> {
@@ -55,14 +60,23 @@ export class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user
+    // Create user with profile
     const user = await this.prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        firstName,
-        lastName,
         socialProvider: provider, // Set provider for all users
+        profile: {
+          create: {
+            firstName,
+            lastName,
+            isEmailVerified: false,
+            role: 'USER',
+          },
+        },
+      },
+      include: {
+        profile: true,
       },
     });
 
@@ -76,14 +90,17 @@ export class AuthService {
 
     // Send verification email
     try {
+      const firstName = String(
+        (user.profile as { firstName?: string | null })?.firstName ?? 'User',
+      );
       await this.emailService.sendVerificationEmail(
         email,
-        firstName || 'User',
+        firstName,
         verificationCode,
       );
-    } catch (error) {
+    } catch (err) {
       // Log error but don't fail registration
-      console.error('Failed to send verification email:', error);
+      console.error('Failed to send verification email:', err);
     }
 
     // Generate access and refresh tokens
@@ -150,16 +167,36 @@ export class AuthService {
         where: { id: user.id },
         data: {
           socialProvider: provider,
-          firstName: firstName || user.firstName,
-          lastName: lastName || user.lastName,
-          isEmailVerified: true, // Social login users are considered verified
           profile: {
             upsert: {
               create: {
+                firstName:
+                  firstName ??
+                  (user.profile?.firstName as string | undefined) ??
+                  '',
+                lastName:
+                  lastName ??
+                  (user.profile?.lastName as string | undefined) ??
+                  '',
                 pictureUrl: profileImage,
+                isEmailVerified: true,
+                role: (user.profile?.role ?? 'USER') as
+                  | 'USER'
+                  | 'ADMIN'
+                  | 'EMPLOYER'
+                  | 'CANDIDATE',
               },
               update: {
+                firstName:
+                  firstName ??
+                  (user.profile?.firstName as string | undefined) ??
+                  '',
+                lastName:
+                  lastName ??
+                  (user.profile?.lastName as string | undefined) ??
+                  '',
                 pictureUrl: profileImage,
+                isEmailVerified: true,
               },
             },
           },
@@ -182,14 +219,15 @@ export class AuthService {
     user = await this.prisma.user.create({
       data: {
         email,
-        firstName,
-        lastName,
         password: hashedPassword,
         socialProvider: provider,
-        isEmailVerified: true, // Social login users are considered verified
         profile: {
           create: {
+            firstName,
+            lastName,
             pictureUrl: profileImage,
+            isEmailVerified: true, // Social login users are considered verified
+            role: 'USER',
           },
         },
       },
@@ -207,6 +245,7 @@ export class AuthService {
   async findUserById(id: string): Promise<User | null> {
     const user = await this.prisma.user.findUnique({
       where: { id },
+      include: { profile: true },
     });
     return user as User | null;
   }
@@ -214,6 +253,7 @@ export class AuthService {
   async validateUser(email: string, password: string): Promise<any> {
     const user = await this.prisma.user.findUnique({
       where: { email },
+      include: { profile: true },
     });
 
     if (
@@ -221,7 +261,8 @@ export class AuthService {
       user.password &&
       (await bcrypt.compare(password, user.password))
     ) {
-      const { password: _, ...result } = user;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password: _pwd, ...result } = user;
       return result;
     }
     return null;
@@ -229,10 +270,14 @@ export class AuthService {
 
   // Generate access and refresh tokens for login/register
   private async generateTokensForLogin(
-    user: any,
+    user: { id: string; email: string; profile?: { role?: string } | null },
     rememberMe: boolean = false,
   ): Promise<{ access_token: string; refresh_token: string }> {
-    const payload = { sub: user.id, email: user.email, role: user.role };
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.profile?.role ?? 'USER',
+    };
 
     // Generate access token with different expiration based on rememberMe
     const accessTokenExpiration = rememberMe
@@ -257,7 +302,7 @@ export class AuthService {
     const refreshTokenExpiry = this.getExpirationInSeconds(
       refreshTokenExpiration,
     );
-    await this.storeRefreshToken(
+    await this.redisService.storeRefreshToken(
       access_token,
       refresh_token,
       refreshTokenExpiry,
@@ -267,8 +312,16 @@ export class AuthService {
   }
 
   // Generate only new access token for refresh flow
-  private async generateAccessToken(user: any): Promise<string> {
-    const payload = { sub: user.id, email: user.email, role: user.role };
+  private async generateAccessToken(user: {
+    id: string;
+    email: string;
+    profile?: { role?: string } | null;
+  }): Promise<string> {
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.profile?.role ?? 'USER',
+    };
 
     return await this.jwtService.signAsync(payload, {
       expiresIn: process.env.JWT_EXPIRATION_TIME || '15m',
@@ -280,7 +333,8 @@ export class AuthService {
     oldAccessToken: string,
   ): Promise<{ access_token: string }> {
     // Get refresh token from storage
-    const refreshToken = await this.getRefreshToken(oldAccessToken);
+    const refreshToken =
+      await this.redisService.getRefreshToken(oldAccessToken);
 
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token not found or expired');
@@ -288,7 +342,8 @@ export class AuthService {
 
     try {
       // Verify refresh token
-      const payload = await this.jwtService.verifyAsync(refreshToken);
+      const payload: { sub: string; type?: string } =
+        await this.jwtService.verifyAsync(refreshToken);
 
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('Invalid token type');
@@ -304,9 +359,9 @@ export class AuthService {
       const new_access_token = await this.generateAccessToken(user);
 
       return { access_token: new_access_token };
-    } catch (error) {
+    } catch {
       // Delete invalid refresh token
-      await this.deleteRefreshToken(oldAccessToken);
+      await this.redisService.deleteRefreshToken(oldAccessToken);
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
@@ -314,30 +369,31 @@ export class AuthService {
   // Logout user and invalidate tokens
   async logout(accessToken: string): Promise<void> {
     // Delete refresh token from storage
-    await this.deleteRefreshToken(accessToken);
+    await this.redisService.deleteRefreshToken(accessToken);
 
     // Optionally blacklist the access token
     const accessTokenExpiry = this.getExpirationInSeconds(
       process.env.JWT_EXPIRATION_TIME || '15m',
     );
-    await this.blacklistToken(accessToken, accessTokenExpiry);
+    await this.redisService.blacklistToken(accessToken, accessTokenExpiry);
   }
 
   // Email verification methods
   async verifyEmail(
     userId: string,
     verificationCode: string,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; verified: boolean }> {
     // Find user by ID
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: { profile: true },
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    if (user.isEmailVerified) {
+    if (user.profile?.isEmailVerified) {
       throw new BadRequestException('Email is already verified');
     }
 
@@ -358,14 +414,14 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired verification code');
     }
 
-    // Mark code as used and verify user email
+    // Mark code as used and verify user email in profile
     await this.prisma.$transaction([
       this.prisma.verificationCode.update({
         where: { id: validCode.id },
         data: { isUsed: true },
       }),
-      this.prisma.user.update({
-        where: { id: user.id },
+      this.prisma.profile.update({
+        where: { userId: user.id },
         data: { isEmailVerified: true },
       }),
     ]);
@@ -374,26 +430,27 @@ export class AuthService {
     try {
       await this.emailService.sendWelcomeEmail(
         user.email,
-        user.firstName || 'User',
+        (user.profile?.firstName ?? 'User') as string,
       );
-    } catch (error) {
-      console.error('Failed to send welcome email:', error);
+    } catch (err) {
+      console.error('Failed to send welcome email:', err);
     }
 
-    return { message: 'Email verified successfully' };
+    return { message: 'Email verified successfully', verified: true };
   }
 
   async resendVerificationCode(userId: string): Promise<{ message: string }> {
     // Find user by ID
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: { profile: true },
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    if (user.isEmailVerified) {
+    if (user.profile?.isEmailVerified) {
       throw new BadRequestException('Email is already verified');
     }
 
@@ -419,10 +476,10 @@ export class AuthService {
     try {
       await this.emailService.sendVerificationEmail(
         user.email,
-        user.firstName || 'User',
+        (user.profile?.firstName ?? 'User') as string,
         verificationCode,
       );
-    } catch (error) {
+    } catch {
       throw new BadRequestException('Failed to send verification email');
     }
 
@@ -438,6 +495,7 @@ export class AuthService {
     // Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email },
+      include: { profile: true },
     });
 
     if (!user) {
@@ -474,7 +532,7 @@ export class AuthService {
     try {
       await this.emailService.sendPasswordResetEmail(
         email,
-        user.firstName || 'User',
+        (user.profile?.firstName ?? 'User') as string,
         resetCode,
       );
     } catch (error) {
@@ -626,14 +684,20 @@ export class AuthService {
         where: { id: existingUser.id },
         data: {
           socialProvider: provider,
-          isEmailVerified: true, // Social users are considered verified
           profile: {
             upsert: {
               create: {
+                firstName,
+                lastName,
                 pictureUrl: profileImage,
+                isEmailVerified: true, // Social users are considered verified
+                role: 'USER',
               },
               update: {
+                firstName,
+                lastName,
                 pictureUrl: profileImage,
+                isEmailVerified: true,
               },
             },
           },
@@ -657,14 +721,15 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         email,
-        firstName,
-        lastName,
         password: generatedPassword, // Store the generated password
         socialProvider: provider,
-        isEmailVerified: true, // Social users are considered verified
         profile: {
           create: {
+            firstName,
+            lastName,
             pictureUrl: profileImage,
+            isEmailVerified: true, // Social users are considered verified
+            role: 'USER',
           },
         },
       },
@@ -882,17 +947,29 @@ export class AuthService {
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
         socialProvider: true,
-        isEmailVerified: true,
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        phoneNumbers: {
+          select: {
+            id: true,
+            userId: true,
+            profileId: true,
+            countryCode: true,
+            number: true,
+            isVerified: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
         profile: {
           select: {
             id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            isEmailVerified: true,
             city: true,
             state: true,
             country: true,
@@ -901,18 +978,6 @@ export class AuthService {
             resumeUrl: true,
             createdAt: true,
             updatedAt: true,
-            phoneNumbers: {
-              select: {
-                id: true,
-                userId: true,
-                profileId: true,
-                countryCode: true,
-                number: true,
-                isVerified: true,
-                createdAt: true,
-                updatedAt: true,
-              },
-            },
           },
         },
       },
@@ -925,82 +990,44 @@ export class AuthService {
     if (!user.isActive) {
       throw new BadRequestException('Account is deactivated');
     }
+    if (!user.profile) {
+      throw new BadRequestException('User profile not found');
+    }
+    console.log({ user });
+    const phoneNumbers = user.phoneNumbers as
+      | UserPhoneNumberResponseDto[]
+      | undefined;
 
     // Transform the response to match the new UserProfile structure
-    const userProfile = user.profile
-      ? {
-          id: user.profile.id,
-          generalInfo:
-            user.firstName || user.lastName
-              ? {
-                  firstName: user.firstName || '',
-                  lastName: user.lastName || '',
-                }
-              : undefined,
-          location:
-            user.profile.city ||
-            user.profile.state ||
-            user.profile.country ||
-            user.profile.address
-              ? {
-                  city: user.profile.city || '',
-                  state: user.profile.state || '',
-                  country: user.profile.country || '',
-                  address: user.profile.address || '',
-                }
-              : undefined,
-          phoneNumber: user.profile.phoneNumbers?.[0] || undefined,
-          pictureUrl: user.profile.pictureUrl || undefined,
-          resumeUrl: user.profile.resumeUrl || undefined,
-          createdAt: user.profile.createdAt,
-          updatedAt: user.profile.updatedAt,
-        }
-      : undefined;
-
-    return {
-      ...user,
-      firstName: user.firstName || undefined,
-      lastName: user.lastName || undefined,
-      socialProvider: user.socialProvider || undefined,
-      profile: userProfile,
+    const profile = user.profile as unknown as Profile; // Non-null assertion after check
+    const userProfile: ProfileResponseDto = {
+      id: profile.id,
+      generalInfo: {
+        firstName: profile.firstName ?? '',
+        lastName: profile.lastName ?? '',
+      },
+      location: {
+        city: profile.city ?? '',
+        state: profile.state ?? '',
+        country: profile.country ?? '',
+        address: profile.address ?? '',
+      },
+      phoneNumber: phoneNumbers ? phoneNumbers[0] : undefined, // Take the first phone number if exists
+      pictureUrl: profile.pictureUrl ?? undefined,
+      resumeUrl: profile.resumeUrl ?? undefined,
+      role: profile.role ?? 'USER',
+      isEmailVerified: profile.isEmailVerified ?? false,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
     };
-  }
-
-  // Simple in-memory storage for refresh tokens (replace Redis)
-  private refreshTokens = new Map<string, { token: string; expiry: number }>();
-
-  private async storeRefreshToken(
-    accessToken: string,
-    refreshToken: string,
-    expirySeconds: number,
-  ): Promise<void> {
-    const expiry = Date.now() + expirySeconds * 1000;
-    this.refreshTokens.set(accessToken, { token: refreshToken, expiry });
-  }
-
-  private async getRefreshToken(accessToken: string): Promise<string | null> {
-    const stored = this.refreshTokens.get(accessToken);
-    if (!stored) return null;
-
-    if (Date.now() > stored.expiry) {
-      this.refreshTokens.delete(accessToken);
-      return null;
-    }
-
-    return stored.token;
-  }
-
-  private async deleteRefreshToken(accessToken: string): Promise<void> {
-    this.refreshTokens.delete(accessToken);
-  }
-
-  private async blacklistToken(
-    token: string,
-    expirySeconds: number,
-  ): Promise<void> {
-    // Simple in-memory blacklist (replace Redis)
-    const expiry = Date.now() + expirySeconds * 1000;
-    // You could implement a simple blacklist here if needed
-    this.logger.log(`Token blacklisted: ${token.substring(0, 10)}...`);
+    return {
+      id: user.id,
+      email: user.email,
+      socialProvider: user.socialProvider ?? (undefined as never),
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      profile: userProfile as never,
+    };
   }
 }

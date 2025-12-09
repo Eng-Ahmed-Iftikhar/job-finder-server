@@ -11,7 +11,7 @@ export class SendPhoneVerificationDto {
   phone: string;
 
   @ApiProperty({
-    description: "Country code for phone number",
+    description: 'Country code for phone number',
     example: '+1',
   })
   @IsString({ message: 'Country code must be a string' })
@@ -29,7 +29,7 @@ export class VerifyPhoneCodeDto {
   phone: string;
 
   @ApiProperty({
-    description: "Country code for phone number",
+    description: 'Country code for phone number',
     example: '+1',
   })
   @IsString({ message: 'Country code must be a string' })

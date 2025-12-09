@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole, SocialProvider } from '@prisma/client';
+import { SocialProvider } from '@prisma/client';
 
 export class UserPhoneNumberResponseDto {
   @ApiProperty({ description: 'Phone number ID' })
@@ -53,13 +53,25 @@ export class ProfileResponseDto {
   @ApiProperty({ description: 'Profile ID' })
   id: string;
 
-  @ApiProperty({ description: 'General user information', type: UserGeneralInfoResponseDto, required: false })
+  @ApiProperty({
+    description: 'General user information',
+    type: UserGeneralInfoResponseDto,
+    required: false,
+  })
   generalInfo?: UserGeneralInfoResponseDto;
 
-  @ApiProperty({ description: 'Location information', type: UserLocationResponseDto, required: false })
+  @ApiProperty({
+    description: 'Location information',
+    type: UserLocationResponseDto,
+    required: false,
+  })
   location?: UserLocationResponseDto;
 
-  @ApiProperty({ description: 'Phone number information', type: UserPhoneNumberResponseDto, required: false })
+  @ApiProperty({
+    description: 'Phone number information',
+    type: UserPhoneNumberResponseDto,
+    required: false,
+  })
   phoneNumber?: UserPhoneNumberResponseDto;
 
   @ApiProperty({ description: 'Profile picture URL', required: false })
@@ -67,6 +79,11 @@ export class ProfileResponseDto {
 
   @ApiProperty({ description: 'Resume URL', required: false })
   resumeUrl?: string;
+
+  @ApiProperty({ description: 'Whether email is verified', required: false })
+  isEmailVerified?: boolean;
+  @ApiProperty({ description: 'User role' })
+  role: string;
 
   @ApiProperty({ description: 'Profile creation date' })
   createdAt: Date;
@@ -82,24 +99,12 @@ export class UserResponseDto {
   @ApiProperty({ description: 'User email address' })
   email: string;
 
-  @ApiProperty({ description: 'User first name', required: false })
-  firstName?: string;
-
-  @ApiProperty({ description: 'User last name', required: false })
-  lastName?: string;
-
-  @ApiProperty({ description: 'User role', enum: UserRole })
-  role: UserRole;
-
   @ApiProperty({
     description: 'Social login provider',
     enum: SocialProvider,
     required: false,
   })
   socialProvider?: SocialProvider;
-
-  @ApiProperty({ description: 'Whether email is verified' })
-  isEmailVerified: boolean;
 
   @ApiProperty({ description: 'Whether account is active' })
   isActive: boolean;
