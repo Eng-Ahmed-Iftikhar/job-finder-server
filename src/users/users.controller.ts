@@ -8,11 +8,12 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
+  Req,
   HttpCode,
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -29,17 +30,23 @@ import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
 import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
+import { CvDetailsDto } from './dto/cv-details.dto';
+import { AddSkillToProfileDto } from '../skills/dto/add-skill-to-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../types/user.types';
+import { SkillsService } from '../skills/skills.service';
 
 @ApiTags('Users')
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly skillsService: SkillsService,
+  ) {}
 
   // ==================== USER CRUD ENDPOINTS ====================
 
@@ -104,8 +111,8 @@ export class UsersController {
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getCurrentUser(@Request() req) {
-    return this.usersService.findUserById(req.user.id);
+  async getCurrentUser(@Req() req: Request) {
+    return this.usersService.findUserById(req.user!.id);
   }
 
   @Put('me/resume')
@@ -137,20 +144,46 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
   async updateCurrentUserResume(
-    @Request() req,
+    @Req() req: Request,
     @Body() body: { resumeUrl: string },
   ) {
     if (!body.resumeUrl) {
       throw new BadRequestException('resumeUrl is required');
     }
 
-    const updatedProfile = await this.usersService.updateProfile(req.user.id, {
+    const updatedProfile = await this.usersService.updateProfile(req.user!.id, {
       resumeUrl: body.resumeUrl,
     });
 
     return {
       resumeUrl: updatedProfile.resumeUrl,
     };
+  }
+
+  @Get('me/cv-details')
+  @ApiOperation({
+    summary: 'Get current user CV details (experience, education, skills, bio)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'CV details retrieved successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  async getCvDetails(@Req() req: Request) {
+    return await this.usersService.getCvDetails(req.user!.id);
+  }
+
+  @Put('me/cv-details')
+  @ApiOperation({
+    summary:
+      'Submit all CV details (experience, education, skills, bio, resume)',
+  })
+  @ApiResponse({ status: 201, description: 'CV details saved successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async submitCvDetails(@Req() req: Request, @Body() body: CvDetailsDto) {
+    return await this.usersService.saveCvDetails(req.user!.id, body);
   }
 
   @Get(':id')
@@ -174,10 +207,10 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 409, description: 'Email already taken' })
   async updateCurrentUser(
-    @Request() req,
+    @Req() req: Request,
     @Body() updateUserDto: UpdateUserDto,
   ) {
-    return this.usersService.updateUser(req.user.id, updateUserDto);
+    return this.usersService.updateUser(req.user!.id, updateUserDto);
   }
 
   @Put(':id')
@@ -223,10 +256,10 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 409, description: 'Profile already exists' })
   async createProfile(
-    @Request() req,
+    @Req() req: Request,
     @Body() createProfileDto: CreateProfileDto,
   ) {
-    return this.usersService.createProfile(req.user.id, createProfileDto);
+    return this.usersService.createProfile(req.user!.id, createProfileDto);
   }
 
   @Get('me/profile')
@@ -234,8 +267,8 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
-  async getCurrentUserProfile(@Request() req) {
-    return this.usersService.findProfileByUserId(req.user.id);
+  async getCurrentUserProfile(@Req() req: Request) {
+    return this.usersService.findProfileByUserId(req.user!.id);
   }
 
   @Put('me/profile')
@@ -245,10 +278,10 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
   async updateCurrentUserProfile(
-    @Request() req,
+    @Req() req: Request,
     @Body() updateProfileDto: UpdateProfileDto,
   ) {
-    return this.usersService.updateProfile(req.user.id, updateProfileDto);
+    return this.usersService.updateProfile(req.user!.id, updateProfileDto);
   }
 
   @Delete('me/profile')
@@ -257,8 +290,8 @@ export class UsersController {
   @ApiResponse({ status: 204, description: 'Profile deleted successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
-  async deleteCurrentUserProfile(@Request() req) {
-    return this.usersService.deleteProfile(req.user.id);
+  async deleteCurrentUserProfile(@Req() req: Request) {
+    return this.usersService.deleteProfile(req.user!.id);
   }
 
   // ==================== PHONE NUMBER ENDPOINTS ====================
@@ -291,10 +324,10 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async setPhoneNumber(
-    @Request() req,
+    @Req() req: Request,
     @Body() createPhoneNumberDto: CreatePhoneNumberDto,
   ) {
-    return this.usersService.setPhoneNumber(req.user.id, createPhoneNumberDto);
+    return this.usersService.setPhoneNumber(req.user!.id, createPhoneNumberDto);
   }
 
   @Get('me/phone-number')
@@ -305,8 +338,8 @@ export class UsersController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'No phone number found' })
-  async getCurrentUserPhoneNumber(@Request() req) {
-    return this.usersService.getUserPhoneNumber(req.user.id);
+  async getCurrentUserPhoneNumber(@Req() req: Request) {
+    return this.usersService.getUserPhoneNumber(req.user!.id);
   }
 
   @Put('me/phone-number')
@@ -371,7 +404,7 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Phone number not found' })
   async updateCurrentUserPhoneNumber(
-    @Request() req,
+    @Req() req: Request,
     @Body() updateData: UpdatePhoneNumberDto,
   ) {
     // Validate that at least one field is provided
@@ -385,7 +418,7 @@ export class UsersController {
       );
     }
 
-    return this.usersService.updateUserPhoneNumber(req.user.id, updateData);
+    return this.usersService.updateUserPhoneNumber(req.user!.id, updateData);
   }
 
   @Delete('me/phone-number')
@@ -397,8 +430,8 @@ export class UsersController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Phone number not found' })
-  async deleteCurrentUserPhoneNumber(@Request() req) {
-    return this.usersService.deleteUserPhoneNumber(req.user.id);
+  async deleteCurrentUserPhoneNumber(@Req() req: Request) {
+    return this.usersService.deleteUserPhoneNumber(req.user!.id);
   }
 
   // ==================== ADMIN PROFILE ENDPOINTS ====================
@@ -467,5 +500,112 @@ export class UsersController {
   })
   async getUserPhoneNumber(@Param('id') id: string) {
     return this.usersService.getUserPhoneNumber(id);
+  }
+
+  // ==================== SKILL MANAGEMENT ENDPOINTS ====================
+
+  @Get('me/skills')
+  @ApiOperation({ summary: 'Get current user skills' })
+  @ApiResponse({ status: 200, description: 'Skills retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  async getCurrentUserSkills(@Req() req: Request) {
+    const profile = await this.usersService.findProfileByUserId(req.user!.id);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return this.skillsService.getProfileSkills(profile.id);
+  }
+
+  @Post('me/skills')
+  @ApiOperation({ summary: 'Add skill to current user profile' })
+  @ApiResponse({ status: 201, description: 'Skill added successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  @ApiResponse({ status: 409, description: 'Profile already has this skill' })
+  async addSkillToCurrentUser(
+    @Req() req: Request,
+    @Body() addSkillDto: AddSkillToProfileDto,
+  ) {
+    const profile = await this.usersService.findProfileByUserId(req.user!.id);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return this.skillsService.addSkillToProfile(
+      profile.id,
+      addSkillDto.skillName,
+    );
+  }
+
+  @Delete('me/skills/:skillId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove skill from current user profile' })
+  @ApiParam({ name: 'skillId', description: 'Skill ID to remove' })
+  @ApiResponse({ status: 204, description: 'Skill removed successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Skill or profile not found' })
+  async removeSkillFromCurrentUser(
+    @Req() req: Request,
+    @Param('skillId') skillId: string,
+  ) {
+    const profile = await this.usersService.findProfileByUserId(req.user!.id);
+    return this.skillsService.removeSkillFromProfile(profile.id, skillId);
+  }
+
+  @Get(':id/skills')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get user skills by user ID (Admin only)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiResponse({ status: 200, description: 'Skills retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  async getUserSkills(@Param('id') id: string) {
+    const profile = await this.usersService.findProfileByUserId(id);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return this.skillsService.getProfileSkills(profile.id);
+  }
+
+  @Post(':id/skills')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Add skill to user profile (Admin only)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiResponse({ status: 201, description: 'Skill added successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  @ApiResponse({ status: 409, description: 'Profile already has this skill' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  async addSkillToUser(
+    @Param('id') id: string,
+    @Body() addSkillDto: AddSkillToProfileDto,
+  ) {
+    const profile = await this.usersService.findProfileByUserId(id);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return this.skillsService.addSkillToProfile(
+      profile.id,
+      addSkillDto.skillName,
+    );
+  }
+
+  @Delete(':id/skills/:skillId')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove skill from user profile (Admin only)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiParam({ name: 'skillId', description: 'Skill ID to remove' })
+  @ApiResponse({ status: 204, description: 'Skill removed successfully' })
+  @ApiResponse({ status: 404, description: 'Skill or profile not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  async removeSkillFromUser(
+    @Param('id') id: string,
+    @Param('skillId') skillId: string,
+  ) {
+    const profile = await this.usersService.findProfileByUserId(id);
+    return this.skillsService.removeSkillFromProfile(profile.id, skillId);
   }
 }

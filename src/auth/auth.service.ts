@@ -430,7 +430,7 @@ export class AuthService {
     try {
       await this.emailService.sendWelcomeEmail(
         user.email,
-        (user.profile?.firstName ?? 'User') as string,
+        user.profile?.firstName as string,
       );
     } catch (err) {
       console.error('Failed to send welcome email:', err);
@@ -476,7 +476,7 @@ export class AuthService {
     try {
       await this.emailService.sendVerificationEmail(
         user.email,
-        (user.profile?.firstName ?? 'User') as string,
+        user.profile?.firstName as string,
         verificationCode,
       );
     } catch {
@@ -532,7 +532,7 @@ export class AuthService {
     try {
       await this.emailService.sendPasswordResetEmail(
         email,
-        (user.profile?.firstName ?? 'User') as string,
+        user.profile?.firstName as string,
         resetCode,
       );
     } catch (error) {
@@ -779,7 +779,7 @@ export class AuthService {
   }
 
   private generateVerificationCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+    return Math.floor(10000 + Math.random() * 90000).toString(); // 5-digit code
   }
 
   // Helper function to convert JWT expiration time to seconds
@@ -970,6 +970,7 @@ export class AuthService {
             lastName: true,
             role: true,
             isEmailVerified: true,
+            isOnboarded: true,
             city: true,
             state: true,
             country: true,
@@ -1017,6 +1018,7 @@ export class AuthService {
       resumeUrl: profile.resumeUrl ?? undefined,
       role: profile.role ?? 'USER',
       isEmailVerified: profile.isEmailVerified ?? false,
+      isOnboarded: profile.isOnboarded ?? false,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };

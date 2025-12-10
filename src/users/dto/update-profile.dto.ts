@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsUrl } from 'class-validator';
+import { IsString, IsOptional, IsUrl, IsBoolean } from 'class-validator';
 
 export class UpdateProfileDto {
   @ApiProperty({ description: 'City', required: false })
@@ -31,4 +31,9 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsUrl({}, { message: 'Please provide a valid URL for resume' })
   resumeUrl?: string;
+
+  @ApiProperty({ description: 'Profile completion status', required: false })
+  @IsOptional()
+  @IsBoolean({ message: 'isOnboarded must be a boolean' })
+  isOnboarded?: boolean;
 }

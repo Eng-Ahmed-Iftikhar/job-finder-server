@@ -5,10 +5,10 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { FilesModule } from './files/files.module';
-import { MegaModule } from './mega/mega.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { EmailModule } from './email/email.module';
+import { SkillsModule } from './skills/skills.module';
 
 @Module({
   imports: [
@@ -21,6 +21,7 @@ import { EmailModule } from './email/email.module';
     FilesModule,
     PrismaModule,
     EmailModule,
+    SkillsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

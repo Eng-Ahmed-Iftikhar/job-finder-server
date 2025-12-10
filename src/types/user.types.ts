@@ -35,11 +35,13 @@ export interface Profile {
   firstName?: string | null;
   lastName?: string | null;
   isEmailVerified: boolean;
+  isOnboarded: boolean;
   role: UserRole;
   city?: string | null;
   state?: string | null;
   country?: string | null;
   address?: string | null;
+  bio?: string | null;
   pictureUrl?: string | null;
   resumeUrl?: string | null;
   createdAt: Date;

@@ -82,6 +82,10 @@ export class ProfileResponseDto {
 
   @ApiProperty({ description: 'Whether email is verified', required: false })
   isEmailVerified?: boolean;
+
+  @ApiProperty({ description: 'Whether email is verified', required: false })
+  isOnboarded?: boolean;
+
   @ApiProperty({ description: 'User role' })
   role: string;
 

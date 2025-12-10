@@ -11,6 +11,7 @@ import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
 import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
+import { CvDetailsDto } from './dto/cv-details.dto';
 import * as bcrypt from 'bcryptjs';
 import { UserRole } from '../types/user.types';
 import { $Enums } from '@prisma/client';
@@ -69,6 +70,7 @@ export class UsersService {
             lastName: true,
             role: true,
             isEmailVerified: true,
+            isOnboarded: true,
           },
         },
       },
@@ -93,6 +95,7 @@ export class UsersService {
             lastName: true,
             role: true,
             isEmailVerified: true,
+            isOnboarded: true,
             city: true,
             state: true,
             country: true,
@@ -115,6 +118,16 @@ export class UsersService {
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        phoneNumbers: {
+          select: {
+            id: true,
+            countryCode: true,
+            number: true,
+            isVerified: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
         profile: {
           select: {
             id: true,
@@ -122,22 +135,13 @@ export class UsersService {
             lastName: true,
             role: true,
             isEmailVerified: true,
+            isOnboarded: true,
             city: true,
             state: true,
             country: true,
             address: true,
             pictureUrl: true,
             resumeUrl: true,
-            phoneNumbers: {
-              select: {
-                id: true,
-                countryCode: true,
-                number: true,
-                isVerified: true,
-                createdAt: true,
-                updatedAt: true,
-              },
-            },
           },
         },
       },
@@ -167,6 +171,7 @@ export class UsersService {
             lastName: true,
             role: true,
             isEmailVerified: true,
+            isOnboarded: true,
             city: true,
             state: true,
             country: true,
@@ -332,10 +337,16 @@ export class UsersService {
       throw new NotFoundException('Profile not found');
     }
 
+    // If resumeUrl is being updated, mark user as onboarded
+    const updateData = { ...updateProfileDto };
+    if (updateProfileDto.resumeUrl) {
+      updateData.isOnboarded = true;
+    }
+
     // Update profile
     const profile = await this.prisma.profile.update({
       where: { userId },
-      data: updateProfileDto,
+      data: updateData,
     });
 
     return profile;
@@ -532,5 +543,164 @@ export class UsersService {
     });
 
     return users;
+  }
+
+  // ==================== CV DETAILS OPERATIONS ====================
+
+  async getCvDetails(userId: string) {
+    // Get user profile with all CV-related data
+    const profile = await this.prisma.profile.findUnique({
+      where: { userId },
+      include: {
+        experiences: {
+          orderBy: { startDate: 'desc' },
+        },
+        educations: {
+          orderBy: { yearStarted: 'desc' },
+        },
+        profileSkills: {
+          include: {
+            skill: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            skill: {
+              name: 'asc',
+            },
+          },
+        },
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    return {
+      bio: profile.bio,
+      resumeUrl: profile.resumeUrl,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      experiences: profile.experiences,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      educations: profile.educations,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      skills: profile.profileSkills.map((ps) => ps.skillId as string),
+    };
+  }
+
+  async saveCvDetails(userId: string, cvDetails: CvDetailsDto) {
+    // First, ensure user exists and has a profile
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.profile) {
+      throw new BadRequestException('Profile must be created first');
+    }
+
+    const profileId = user.profile.id;
+
+    // Use transaction to save all data atomically
+    return await this.prisma.$transaction(async (tx) => {
+      // Update profile bio and resumeUrl if provided, and mark as onboarded
+      const profileUpdates: {
+        bio?: string | null;
+        resumeUrl?: string | null;
+        isOnboarded?: boolean;
+      } = {};
+      if (cvDetails.bio !== undefined) profileUpdates.bio = cvDetails.bio;
+      if (cvDetails.resumeUrl !== undefined)
+        profileUpdates.resumeUrl = cvDetails.resumeUrl;
+
+      // Mark profile as onboarded when CV details are submitted
+      profileUpdates.isOnboarded = true;
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await tx.profile.update({
+          where: { id: profileId },
+          data: profileUpdates,
+        });
+      }
+
+      // Delete existing experiences, educations, and profile skills
+      await tx.experience.deleteMany({ where: { profileId } });
+      await tx.education.deleteMany({ where: { profileId } });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      await tx.profileSkill.deleteMany({ where: { profileId } });
+
+      // Create new experiences
+      if (cvDetails.experiences && cvDetails.experiences.length > 0) {
+        await tx.experience.createMany({
+          data: cvDetails.experiences.map((exp) => ({
+            profileId,
+            position: exp.position,
+            company: exp.company,
+            startDate: new Date(exp.startDate),
+            endDate: exp.endDate ? new Date(exp.endDate) : null,
+            isCurrent: exp.isCurrent ?? false,
+          })),
+        });
+      }
+
+      // Create new educations
+      if (cvDetails.educations && cvDetails.educations.length > 0) {
+        await tx.education.createMany({
+          data: cvDetails.educations.map((edu) => ({
+            profileId,
+            school: edu.school,
+            degree: edu.degree,
+            fieldOfStudy: edu.fieldOfStudy ?? null,
+            yearStarted: edu.yearStarted,
+            yearGraduated: edu.yearGraduated ?? null,
+            inProgress: edu.inProgress ?? false,
+          })),
+        });
+      }
+
+      // Handle skills - link existing skills by ID
+      if (cvDetails.skillIds && cvDetails.skillIds.length > 0) {
+        // Validate that all skill IDs exist
+        const existingSkills = await tx.skill.findMany({
+          where: { id: { in: cvDetails.skillIds } },
+          select: { id: true },
+        });
+
+        if (existingSkills.length !== cvDetails.skillIds.length) {
+          throw new BadRequestException('One or more skill IDs are invalid');
+        }
+
+        // Link skills to profile
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        await tx.profileSkill.createMany({
+          data: cvDetails.skillIds.map((skillId) => ({
+            profileId,
+            skillId,
+          })),
+        });
+      }
+
+      // Return the complete updated profile with all relations
+      return await tx.profile.findUnique({
+        where: { id: profileId },
+        include: {
+          experiences: true,
+          educations: true,
+          profileSkills: {
+            include: {
+              skill: true,
+            },
+          },
+        },
+      });
+    });
   }
 }
