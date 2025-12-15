@@ -1,36 +1,31 @@
 import {
-  Controller,
-  Post,
   Body,
+  Controller,
   HttpCode,
   HttpStatus,
   Logger,
-  UseGuards,
+  Post,
   Request,
-  Get,
+  UseGuards,
 } from '@nestjs/common';
-import type { Request as ExpressRequest } from 'express';
 import {
-  ApiTags,
+  ApiBearerAuth,
   ApiOperation,
   ApiResponse,
-  ApiBearerAuth,
+  ApiTags,
 } from '@nestjs/swagger';
+import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto } from './dto/create-auth.dto';
-import { SocialRegisterDto } from './dto/social-register.dto';
-import { SocialLoginDto } from './dto/social-login.dto';
-import {
-  SendPhoneVerificationDto,
-  VerifyPhoneCodeDto,
-} from './dto/phone-verification.dto';
-import { RefreshTokenDto, RefreshTokenResponse } from './dto/refresh-token.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
-import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { LoginDto, RegisterDto } from './dto/create-auth.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
+import { VerifyPhoneCodeDto } from './dto/phone-verification.dto';
+import { RefreshTokenDto, RefreshTokenResponse } from './dto/refresh-token.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
+import { SocialRegisterDto } from './dto/social-register.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { AuthResponse } from './entities/auth.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -366,20 +361,14 @@ export class AuthController {
   })
   async sendPhoneVerification(
     @Request() req: ExpressRequest,
-    @Body() sendPhoneVerificationDto: SendPhoneVerificationDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(
-        `📱 Phone verification request for user ${req.user?.id}: ${sendPhoneVerificationDto.phone}`,
-      );
+      this.logger.log(`📱 Phone verification request for user ${req.user?.id}`);
     }
-    const result = await this.authService.sendPhoneVerification(
-      req.user!.id,
-      sendPhoneVerificationDto,
-    );
+    const result = await this.authService.sendPhoneVerification(req.user!.id);
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `✅ Phone verification setup complete for user ${req.user?.id}: ${sendPhoneVerificationDto.phone}`,
+        `✅ Phone verification setup complete for user ${req.user?.id}`,
       );
     }
     return result;
@@ -410,7 +399,7 @@ export class AuthController {
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
       this.logger.log(
-        `📱 Phone code verification attempt for user ${req.user?.id}: ${verifyPhoneCodeDto.phone}`,
+        `📱 Phone code verification attempt for user ${req.user?.id}`,
       );
     }
     const result = await this.authService.verifyPhoneCode(
@@ -418,47 +407,8 @@ export class AuthController {
       verifyPhoneCodeDto,
     );
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(
-        `✅ Phone number verified for user ${req.user?.id}: ${verifyPhoneCodeDto.phone}`,
-      );
+      this.logger.log(`✅ Phone number verified for user ${req.user?.id}:`);
     }
     return result;
-  }
-
-  @Get('me')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get current authenticated user information',
-    description:
-      "Retrieve the current user's profile information including their profile details. Requires a valid JWT token in the Authorization header.",
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'User information retrieved successfully',
-    type: UserResponseDto,
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Unauthorized - Invalid or missing JWT token',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad Request - User not found or account deactivated',
-  })
-  async getCurrentUser(
-    @Request() req: ExpressRequest,
-  ): Promise<UserResponseDto> {
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`👤 Getting user info for: ${req.user?.email}`);
-    }
-
-    const user = await this.authService.getCurrentUser(req.user!.id);
-
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ User info retrieved for: ${req.user?.email}`);
-    }
-
-    return user;
   }
 }

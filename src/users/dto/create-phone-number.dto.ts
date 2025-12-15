@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsPhoneNumber } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class CreatePhoneNumberDto {
   @ApiProperty({ description: 'Country code', example: '+1' })
@@ -7,6 +7,6 @@ export class CreatePhoneNumberDto {
   countryCode: string;
 
   @ApiProperty({ description: 'Phone number', example: '5551234567' })
-  @IsPhoneNumber(undefined, { message: 'Please provide a valid phone number' })
+  @IsString({ message: 'Please provide a valid phone number' })
   number: string;
 }

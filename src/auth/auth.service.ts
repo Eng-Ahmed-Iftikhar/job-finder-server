@@ -11,21 +11,13 @@ import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { SmsService } from '../sms/sms.service';
-import { Profile, User, VerificationCodeType } from '../types/user.types';
+import { User, VerificationCodeType } from '../types/user.types';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto, RegisterDto } from './dto/create-auth.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
-import {
-  SendPhoneVerificationDto,
-  VerifyPhoneCodeDto,
-} from './dto/phone-verification.dto';
+import { VerifyPhoneCodeDto } from './dto/phone-verification.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
 import { SocialRegisterDto } from './dto/social-register.dto';
-import {
-  ProfileResponseDto,
-  UserPhoneNumberResponseDto,
-  UserResponseDto,
-} from './dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -48,36 +40,37 @@ export class AuthService {
       provider = 'EMAIL',
     } = registerDto;
 
-    // Check if user already exists
-    const existingUser = await this.prisma.user.findUnique({
+    // Check if email already exists
+    const existingEmail = await this.prisma.email.findUnique({
       where: { email },
     });
 
-    if (existingUser) {
+    if (existingEmail?.id) {
       throw new ConflictException('User with this email already exists');
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user with profile
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        socialProvider: provider, // Set provider for all users
-        profile: {
-          create: {
-            firstName,
-            lastName,
-            isEmailVerified: false,
-            role: 'USER',
+    // Create Email, then User with profile
+    const user = await this.prisma.$transaction(async (tx) => {
+      const emailRow = await tx.email.create({
+        data: { email, provider, isVerified: false },
+      });
+      return tx.user.create({
+        data: {
+          password: hashedPassword,
+          email: { connect: { id: emailRow.id } },
+          profile: {
+            create: {
+              firstName,
+              lastName,
+              role: 'USER',
+            },
           },
         },
-      },
-      include: {
-        profile: true,
-      },
+        include: { profile: true, email: true },
+      });
     });
 
     // Generate and store verification code
@@ -104,7 +97,11 @@ export class AuthService {
     }
 
     // Generate access and refresh tokens
-    const tokens = await this.generateTokensForLogin(user);
+    const tokens = await this.generateTokensForLogin({
+      id: user.id,
+      email,
+      profile: user.profile,
+    });
 
     // Return only the access token
     return {
@@ -115,10 +112,12 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<{ access_token: string }> {
     const { email, password, rememberMe = false } = loginDto;
 
-    // Find user by email
-    const user = await this.prisma.user.findUnique({
+    // Find user by email via Email table
+    const emailRow = await this.prisma.email.findUnique({
       where: { email },
+      include: { user: true },
     });
+    const user = emailRow?.user ?? null;
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -141,7 +140,10 @@ export class AuthService {
     }
 
     // Generate access and refresh tokens
-    const tokens = await this.generateTokensForLogin(user, rememberMe);
+    const tokens = await this.generateTokensForLogin(
+      { id: user.id, email, profile: null },
+      rememberMe,
+    );
 
     // Return only the access token
     return {
@@ -154,19 +156,24 @@ export class AuthService {
   ): Promise<{ access_token: string }> {
     const { email, firstName, lastName, provider, profileImage } =
       socialLoginDto;
-
-    // Check if user already exists
-    let user = await this.prisma.user.findUnique({
+    // Check if user already exists via Email table
+    const emailRow = await this.prisma.email.findUnique({
       where: { email },
-      include: { profile: true },
+      include: { user: { include: { profile: true } } },
     });
+    let user = emailRow?.user ?? null;
 
     if (user) {
       // User exists, update their social provider info and return them
+      // Update provider and mark email verified
+      await this.prisma.email.update({
+        where: { id: user.emailId! },
+        data: { provider, isVerified: true },
+      });
+
       const updatedUser = await this.prisma.user.update({
         where: { id: user.id },
         data: {
-          socialProvider: provider,
           profile: {
             upsert: {
               create: {
@@ -179,12 +186,7 @@ export class AuthService {
                   (user.profile?.lastName as string | undefined) ??
                   '',
                 pictureUrl: profileImage,
-                isEmailVerified: true,
-                role: (user.profile?.role ?? 'USER') as
-                  | 'USER'
-                  | 'ADMIN'
-                  | 'EMPLOYER'
-                  | 'CANDIDATE',
+                role: user.profile?.role,
               },
               update: {
                 firstName:
@@ -196,7 +198,6 @@ export class AuthService {
                   (user.profile?.lastName as string | undefined) ??
                   '',
                 pictureUrl: profileImage,
-                isEmailVerified: true,
               },
             },
           },
@@ -204,7 +205,11 @@ export class AuthService {
         include: { profile: true },
       });
 
-      const tokens = await this.generateTokensForLogin(updatedUser);
+      const tokens = await this.generateTokensForLogin({
+        id: updatedUser.id,
+        email,
+        profile: updatedUser.profile,
+      });
 
       // Return only the access token
       return {
@@ -216,25 +221,32 @@ export class AuthService {
     const generatedPassword = this.generateRandomPassword();
     const hashedPassword = await bcrypt.hash(generatedPassword, 12);
 
-    user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        socialProvider: provider,
-        profile: {
-          create: {
-            firstName,
-            lastName,
-            pictureUrl: profileImage,
-            isEmailVerified: true, // Social login users are considered verified
-            role: 'USER',
+    user = await this.prisma.$transaction(async (tx) => {
+      const createdEmail = await tx.email.create({
+        data: { email, provider, isVerified: true },
+      });
+      return tx.user.create({
+        data: {
+          password: hashedPassword,
+          email: { connect: { id: createdEmail.id } },
+          profile: {
+            create: {
+              firstName,
+              lastName,
+              pictureUrl: profileImage,
+              role: 'USER',
+            },
           },
         },
-      },
-      include: { profile: true },
+        include: { profile: true },
+      });
     });
 
-    const tokens = await this.generateTokensForLogin(user);
+    const tokens = await this.generateTokensForLogin({
+      id: user.id,
+      email,
+      profile: user.profile,
+    });
 
     // Return only the access token
     return {
@@ -251,10 +263,11 @@ export class AuthService {
   }
 
   async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.prisma.user.findUnique({
+    const emailRow = await this.prisma.email.findUnique({
       where: { email },
-      include: { profile: true },
+      include: { user: { include: { profile: true } } },
     });
+    const user = emailRow?.user ?? null;
 
     if (
       user &&
@@ -386,14 +399,14 @@ export class AuthService {
     // Find user by ID
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { profile: true },
+      include: { profile: true, email: true },
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    if (user.profile?.isEmailVerified) {
+    if (user.email?.isVerified) {
       throw new BadRequestException('Email is already verified');
     }
 
@@ -420,16 +433,16 @@ export class AuthService {
         where: { id: validCode.id },
         data: { isUsed: true },
       }),
-      this.prisma.profile.update({
-        where: { userId: user.id },
-        data: { isEmailVerified: true },
+      this.prisma.email.update({
+        where: { id: user.emailId! },
+        data: { isVerified: true },
       }),
     ]);
 
     // Send welcome email
     try {
       await this.emailService.sendWelcomeEmail(
-        user.email,
+        user.email?.email ?? '',
         user.profile?.firstName as string,
       );
     } catch (err) {
@@ -443,14 +456,14 @@ export class AuthService {
     // Find user by ID
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { profile: true },
+      include: { profile: true, email: true },
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    if (user.profile?.isEmailVerified) {
+    if (user.email?.isVerified) {
       throw new BadRequestException('Email is already verified');
     }
 
@@ -475,7 +488,7 @@ export class AuthService {
     // Send verification email
     try {
       await this.emailService.sendVerificationEmail(
-        user.email,
+        user.email?.email ?? '',
         user.profile?.firstName as string,
         verificationCode,
       );
@@ -492,11 +505,12 @@ export class AuthService {
   ): Promise<{ message: string }> {
     const { email } = forgotPasswordDto;
 
-    // Find user by email
-    const user = await this.prisma.user.findUnique({
+    // Find user by email via Email table
+    const emailRow = await this.prisma.email.findUnique({
       where: { email },
-      include: { profile: true },
+      include: { user: { include: { profile: true } } },
     });
+    const user = emailRow?.user ?? null;
 
     if (!user) {
       // Return success message even if user doesn't exist for security
@@ -672,32 +686,34 @@ export class AuthService {
     const { email, firstName, lastName, provider, profileImage } =
       socialRegisterDto;
 
-    // Check if user already exists
-    const existingUser = await this.prisma.user.findUnique({
+    // Check if user already exists via Email table
+    const emailRow = await this.prisma.email.findUnique({
       where: { email },
-      include: { profile: true },
+      include: { user: { include: { profile: true } } },
     });
 
-    if (existingUser) {
-      // If user exists, link the social account
+    if (emailRow?.user) {
+      // Update provider and mark email verified
+      await this.prisma.email.update({
+        where: { id: emailRow.id },
+        data: { provider, isVerified: true },
+      });
+
       const updatedUser = await this.prisma.user.update({
-        where: { id: existingUser.id },
+        where: { id: emailRow.user.id },
         data: {
-          socialProvider: provider,
           profile: {
             upsert: {
               create: {
                 firstName,
                 lastName,
                 pictureUrl: profileImage,
-                isEmailVerified: true, // Social users are considered verified
                 role: 'USER',
               },
               update: {
                 firstName,
                 lastName,
                 pictureUrl: profileImage,
-                isEmailVerified: true,
               },
             },
           },
@@ -705,44 +721,45 @@ export class AuthService {
         include: { profile: true },
       });
 
-      // Generate JWT tokens
-      const tokens = await this.generateTokensForLogin(updatedUser);
-
-      // Return only the access token
-      return {
-        access_token: tokens.access_token,
-      };
+      const tokens = await this.generateTokensForLogin({
+        id: updatedUser.id,
+        email,
+        profile: updatedUser.profile,
+      });
+      return { access_token: tokens.access_token };
     }
 
     // Generate a random password for social users
     const generatedPassword = this.generateRandomPassword();
 
     // Create new user with social provider info
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: generatedPassword, // Store the generated password
-        socialProvider: provider,
-        profile: {
-          create: {
-            firstName,
-            lastName,
-            pictureUrl: profileImage,
-            isEmailVerified: true, // Social users are considered verified
-            role: 'USER',
+    const user = await this.prisma.$transaction(async (tx) => {
+      const createdEmail = await tx.email.create({
+        data: { email, provider, isVerified: true },
+      });
+      return tx.user.create({
+        data: {
+          password: generatedPassword, // Store the generated password
+          email: { connect: { id: createdEmail.id } },
+          profile: {
+            create: {
+              firstName,
+              lastName,
+              pictureUrl: profileImage,
+              role: 'USER',
+            },
           },
         },
-      },
-      include: { profile: true },
+        include: { profile: true },
+      });
     });
 
-    // Generate JWT tokens
-    const tokens = await this.generateTokensForLogin(user);
-
-    // Return only the access token
-    return {
-      access_token: tokens.access_token,
-    };
+    const tokens = await this.generateTokensForLogin({
+      id: user.id,
+      email,
+      profile: user.profile,
+    });
+    return { access_token: tokens.access_token };
   }
 
   // Generate random password for social users
@@ -804,10 +821,7 @@ export class AuthService {
   // Phone verification methods - Simplified with static code
   async sendPhoneVerification(
     userId: string, // Use the authenticated user's ID
-    sendPhoneVerificationDto: SendPhoneVerificationDto,
   ): Promise<{ message: string }> {
-    const { phone, countryCode } = sendPhoneVerificationDto;
-
     // Check if user exists and is authenticated
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -822,83 +836,36 @@ export class AuthService {
       throw new BadRequestException('Account is deactivated');
     }
 
-    // Check if phone is already verified by any user
-    const existingPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
+    if (!user.profile) {
+      throw new BadRequestException('User profile not found');
+    }
+
+    // Find the user's phone number record
+    const userPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
       where: {
-        number: phone,
-        countryCode: countryCode,
-        isVerified: true,
+        profileId: user.profile.id,
       },
-      include: { user: true },
+      include: { phoneNumber: true },
     });
 
-    if (
-      existingPhoneNumber &&
-      existingPhoneNumber.user.isActive &&
-      existingPhoneNumber.userId !== userId
-    ) {
-      throw new ConflictException(
-        'Phone number is already registered with another account',
+    if (!userPhoneNumber) {
+      throw new BadRequestException(
+        'Phone number not found. Please add this phone number to your profile first.',
       );
     }
 
-    // Check if this user already has this phone number
-    const userPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
-      where: {
-        userId: userId,
-      },
-    });
-
-    if (userPhoneNumber) {
-      if (userPhoneNumber.isVerified) {
-        throw new BadRequestException(
-          'Phone number is already verified for this user',
-        );
-      }
-      // Update existing phone number with new data
-      await this.prisma.userPhoneNumber.update({
-        where: { id: userPhoneNumber.id },
-        data: {
-          countryCode: countryCode,
-          number: phone,
-          isVerified: false,
-        },
-      });
-    } else {
-      // Create new phone number record for the user
-      if (!user.profile) {
-        // Create profile if it doesn't exist
-        await this.prisma.profile.create({
-          data: { userId: userId },
-        });
-      }
-
-      // Get the profile (either existing or newly created)
-      const profile = await this.prisma.profile.findUnique({
-        where: { userId: userId },
-      });
-
-      // Create phone number record
-      await this.prisma.userPhoneNumber.create({
-        data: {
-          userId: userId,
-          profileId: profile!.id,
-          countryCode: countryCode,
-          number: phone,
-          isVerified: false,
-        },
-      });
+    if (userPhoneNumber.phoneNumber.isVerified) {
+      throw new BadRequestException('Phone number is already verified');
     }
 
-    this.logger.log(`Phone verification setup for user ${userId}: ${phone}`);
+    // Log verification code (in production, send SMS via Twilio)
+    this.logger.log(`Phone verification code for user ${userId}: 12345`);
 
-    // No need to send SMS or store verification code
-    // Just inform user to use static code "12345"
-    this.logger.log(`Phone verification setup for ${phone}. Use code: 12345`);
+    // In production, you would:
+    // await this.smsService.sendVerificationCode(countryCode + phone, '12345');
 
     return {
-      message:
-        'Phone verification setup complete. Use verification code: 12345',
+      message: 'Verification code sent successfully. Use code: 12345',
     };
   }
 
@@ -906,17 +873,19 @@ export class AuthService {
     userId: string, // Use the authenticated user's ID
     verifyPhoneCodeDto: VerifyPhoneCodeDto,
   ): Promise<{ message: string }> {
-    const { phone, countryCode, verificationCode } = verifyPhoneCodeDto;
+    const { verificationCode } = verifyPhoneCodeDto;
 
     // Static verification code "12345" always works
     if (verificationCode === '12345') {
       // Find phone number record for this specific user
+      const profile = await this.prisma.profile.findUnique({
+        where: { userId },
+      });
       const phoneNumberRecord = await this.prisma.userPhoneNumber.findFirst({
         where: {
-          userId: userId,
-          number: phone,
-          countryCode: countryCode,
+          profileId: profile!.id,
         },
+        include: { phoneNumber: true },
       });
 
       if (!phoneNumberRecord) {
@@ -924,13 +893,13 @@ export class AuthService {
       }
 
       // Mark phone number as verified directly (bypass normal verification)
-      await this.prisma.userPhoneNumber.update({
-        where: { id: phoneNumberRecord.id },
+      await this.prisma.phoneNumber.update({
+        where: { id: phoneNumberRecord.phoneNumberId },
         data: { isVerified: true },
       });
 
       this.logger.log(
-        `Phone number verified successfully using static code for user ${userId}: ${phone}`,
+        `Phone number verified successfully using static code for user ${userId}`,
       );
 
       return { message: 'Phone number verified successfully using test code' };
@@ -938,98 +907,5 @@ export class AuthService {
 
     // For any other code, return error (since we only support "12345")
     throw new BadRequestException('Invalid verification code. Use: 12345');
-  }
-
-  // Get current user with profile information
-  async getCurrentUser(userId: string): Promise<UserResponseDto> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        socialProvider: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        phoneNumbers: {
-          select: {
-            id: true,
-            userId: true,
-            profileId: true,
-            countryCode: true,
-            number: true,
-            isVerified: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-        profile: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            isEmailVerified: true,
-            isOnboarded: true,
-            city: true,
-            state: true,
-            country: true,
-            address: true,
-            pictureUrl: true,
-            resumeUrl: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-      },
-    });
-
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    if (!user.isActive) {
-      throw new BadRequestException('Account is deactivated');
-    }
-    if (!user.profile) {
-      throw new BadRequestException('User profile not found');
-    }
-    console.log({ user });
-    const phoneNumbers = user.phoneNumbers as
-      | UserPhoneNumberResponseDto[]
-      | undefined;
-
-    // Transform the response to match the new UserProfile structure
-    const profile = user.profile as unknown as Profile; // Non-null assertion after check
-    const userProfile: ProfileResponseDto = {
-      id: profile.id,
-      generalInfo: {
-        firstName: profile.firstName ?? '',
-        lastName: profile.lastName ?? '',
-      },
-      location: {
-        city: profile.city ?? '',
-        state: profile.state ?? '',
-        country: profile.country ?? '',
-        address: profile.address ?? '',
-      },
-      phoneNumber: phoneNumbers ? phoneNumbers[0] : undefined, // Take the first phone number if exists
-      pictureUrl: profile.pictureUrl ?? undefined,
-      resumeUrl: profile.resumeUrl ?? undefined,
-      role: profile.role ?? 'USER',
-      isEmailVerified: profile.isEmailVerified ?? false,
-      isOnboarded: profile.isOnboarded ?? false,
-      createdAt: profile.createdAt,
-      updatedAt: profile.updatedAt,
-    };
-    return {
-      id: user.id,
-      email: user.email,
-      socialProvider: user.socialProvider ?? (undefined as never),
-      isActive: user.isActive,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      profile: userProfile as never,
-    };
   }
 }

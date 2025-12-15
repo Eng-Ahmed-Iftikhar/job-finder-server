@@ -5,12 +5,6 @@ export class UserPhoneNumberResponseDto {
   @ApiProperty({ description: 'Phone number ID' })
   id: string;
 
-  @ApiProperty({ description: 'User ID' })
-  userId: string;
-
-  @ApiProperty({ description: 'Profile ID' })
-  profileId: string;
-
   @ApiProperty({ description: 'Country code' })
   countryCode: string;
 
@@ -95,20 +89,34 @@ export class ProfileResponseDto {
   @ApiProperty({ description: 'Profile last update date' })
   updatedAt: Date;
 }
-
-export class UserResponseDto {
-  @ApiProperty({ description: 'User ID' })
+export class UserEmailResponseDto {
+  @ApiProperty({ description: 'Email ID' })
   id: string;
-
-  @ApiProperty({ description: 'User email address' })
+  @ApiProperty({ description: 'Email address' })
   email: string;
-
   @ApiProperty({
     description: 'Social login provider',
     enum: SocialProvider,
     required: false,
   })
-  socialProvider?: SocialProvider;
+  provider?: SocialProvider;
+  @ApiProperty({ description: 'Whether email is verified' })
+  isVerified: boolean;
+  @ApiProperty({ description: 'Email creation date' })
+  createdAt: Date;
+  @ApiProperty({ description: 'Email last update date' })
+  updatedAt: Date;
+}
+
+export class UserResponseDto {
+  @ApiProperty({ description: 'User ID' })
+  id: string;
+
+  @ApiProperty({
+    description: 'User email information',
+    type: UserEmailResponseDto,
+  })
+  email: UserEmailResponseDto;
 
   @ApiProperty({ description: 'Whether account is active' })
   isActive: boolean;

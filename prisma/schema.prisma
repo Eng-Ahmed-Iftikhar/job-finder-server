@@ -16,12 +16,8 @@ datasource db {
 // User model for authentication
 model User {
   id              String    @id @default(cuid())
-  email           String    @unique
   password        String?   // Made optional for social login users
   isActive        Boolean   @default(true)
-  
-  // Social login fields
-  socialProvider  SocialProvider?
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -29,9 +25,25 @@ model User {
   // Relations
   verificationCodes VerificationCode[]
   profile         Profile?
-  phoneNumbers    UserPhoneNumber[]
+  emailId         String? @unique
+  email           Email?    @relation(fields: [emailId], references: [id], onDelete: SetNull)
 
   @@map("users")
+}
+
+// Email addresses associated with a user
+model Email {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  isVerified Boolean  @default(false)
+  // Social login fields
+  provider  SocialProvider?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User?
+  @@map("emails")
 }
 
 // Verification codes table
@@ -57,7 +69,6 @@ model Profile {
   userId          String   @unique
   firstName       String?
   lastName        String?
-  isEmailVerified Boolean  @default(false)
   isOnboarded     Boolean  @default(false)
   role            UserRole @default(USER)
   city            String?
@@ -145,11 +156,9 @@ model ProfileSkill {
   @@map("profile_skills")
 }
 
-// Phone number model for user phone numbers
-model UserPhoneNumber {
+// Phone numbers directory (no direct link to Profile)
+model PhoneNumber {
   id          String   @id @default(cuid())
-  userId      String
-  profileId   String
   countryCode String
   number      String
   isVerified  Boolean  @default(false)
@@ -157,9 +166,24 @@ model UserPhoneNumber {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  userPhoneNumbers UserPhoneNumber[]
 
+  @@map("phone_numbers")
+}
+
+// Join table linking Profile to PhoneNumber
+model UserPhoneNumber {
+  id            String      @id @default(cuid())
+  profileId     String
+  phoneNumberId String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  phoneNumber PhoneNumber @relation(fields: [phoneNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, phoneNumberId])
   @@map("user_phone_numbers")
 }
 

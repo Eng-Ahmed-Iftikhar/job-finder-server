@@ -1,20 +1,28 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ConflictException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { CreateProfileDto } from './dto/create-profile.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
-import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
-import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
-import { CvDetailsDto } from './dto/cv-details.dto';
+import { SocialProvider, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { UserRole } from '../types/user.types';
-import { $Enums } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
+import { CreateProfileDto } from './dto/create-profile.dto';
+import { CreateUserDto } from './dto/create-user.dto';
+import { CvDetailsDto } from './dto/cv-details.dto';
+import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+
+import {
+  ProfileResponseDto,
+  UserEmailResponseDto,
+  UserPhoneNumberResponseDto,
+  UserResponseDto,
+} from '../auth/dto/user-response.dto';
+import { Profile } from '../types/user.types';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 @Injectable()
 export class UsersService {
@@ -23,14 +31,13 @@ export class UsersService {
   // ==================== USER CRUD OPERATIONS ====================
 
   async createUser(createUserDto: CreateUserDto) {
-    const { email, password, ...userData } = createUserDto;
+    const { email, password, socialProvider, ...userData } = createUserDto;
 
-    // Check if user already exists
-    const existingUser = await this.prisma.user.findUnique({
+    // Check if email already exists
+    const existingEmail = await this.prisma.email.findUnique({
       where: { email },
     });
-
-    if (existingUser) {
+    if (existingEmail) {
       throw new ConflictException('User with this email already exists');
     }
 
@@ -41,215 +48,224 @@ export class UsersService {
     }
 
     // Extract profile-related fields
-    const { firstName, lastName, ...userOnlyData } = userData;
+    const { firstName, lastName, role, ...userOnlyData } = userData;
 
-    // Create user with profile
-    const user = await this.prisma.user.create({
-      data: {
-        ...userOnlyData,
-        email,
-        password: hashedPassword,
-        profile: {
-          create: {
-            firstName,
-            lastName,
-            role: UserRole.USER,
+    // Create Email first, then User linked to it with a Profile
+    const result = await this.prisma.$transaction(async (tx) => {
+      const emailRow = await tx.email.create({
+        data: {
+          email,
+          provider: (socialProvider as SocialProvider) ?? SocialProvider.EMAIL,
+          isVerified: false,
+        },
+      });
+
+      const user = await tx.user.create({
+        data: {
+          ...userOnlyData,
+          password: hashedPassword,
+          email: { connect: { id: emailRow.id } },
+          profile: {
+            create: {
+              firstName,
+              lastName,
+              role: (role as UserRole) ?? UserRole.USER,
+            },
           },
         },
-      },
-      select: {
-        id: true,
-        email: true,
-        socialProvider: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        profile: {
-          select: {
-            firstName: true,
-            lastName: true,
-            role: true,
-            isEmailVerified: true,
-            isOnboarded: true,
-          },
+        include: {
+          email: true,
+          profile: true,
         },
-      },
+      });
+      return user;
     });
 
-    return user;
-  }
-
-  async findAllUsers() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        socialProvider: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        profile: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            isEmailVerified: true,
-            isOnboarded: true,
-            city: true,
-            state: true,
-            country: true,
-            address: true,
-            pictureUrl: true,
-            resumeUrl: true,
-          },
-        },
-      },
-    });
+    return {
+      id: result.id,
+      isActive: result.isActive,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+      email: result.email,
+      profile: result.profile
+        ? {
+            firstName: result.profile.firstName,
+            lastName: result.profile.lastName,
+            role: result.profile.role,
+            isOnboarded: result.profile.isOnboarded,
+          }
+        : null,
+    };
   }
 
   async findUserById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
+      include: {
         email: true,
-        socialProvider: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        phoneNumbers: {
-          select: {
-            id: true,
-            countryCode: true,
-            number: true,
-            isVerified: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
+        profile: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
+  async findAllUsers() {
+    return this.prisma.user.findMany({
+      include: {
+        email: true,
+        profile: true,
+      },
+    });
+  }
+
+  async getCurrentUser(userId: string): Promise<UserResponseDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        email: true,
         profile: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            isEmailVerified: true,
-            isOnboarded: true,
-            city: true,
-            state: true,
-            country: true,
-            address: true,
-            pictureUrl: true,
-            resumeUrl: true,
+          include: {
+            phoneNumbers: { include: { phoneNumber: true } },
           },
         },
       },
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new BadRequestException('User not found');
     }
 
-    return user;
+    if (!user.isActive) {
+      throw new BadRequestException('Account is deactivated');
+    }
+    if (!user.profile) {
+      throw new BadRequestException('User profile not found');
+    }
+
+    const phoneNumbers = user.profile?.phoneNumbers?.map(
+      (j) => j.phoneNumber,
+    ) as UserPhoneNumberResponseDto[] | undefined;
+
+    // Transform the response to match the new UserProfile structure
+    const profile = user.profile as unknown as Profile; // Non-null assertion after check
+    const userProfile: ProfileResponseDto = {
+      id: profile.id,
+      generalInfo: {
+        firstName: profile.firstName ?? '',
+        lastName: profile.lastName ?? '',
+      },
+      location: {
+        city: profile.city ?? '',
+        state: profile.state ?? '',
+        country: profile.country ?? '',
+        address: profile.address ?? '',
+      },
+      phoneNumber: phoneNumbers ? phoneNumbers[0] : undefined, // Take the first phone number if exists
+      pictureUrl: profile.pictureUrl ?? undefined,
+      resumeUrl: profile.resumeUrl ?? undefined,
+      role: profile.role ?? 'USER',
+      isEmailVerified: user.email?.isVerified ?? false,
+      isOnboarded: profile.isOnboarded ?? false,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
+    };
+    return {
+      id: user.id,
+      email: user.email as unknown as UserEmailResponseDto,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      profile: userProfile as never,
+    };
   }
 
   async findUserByEmail(email: string) {
-    const user = await this.prisma.user.findUnique({
+    const emailRow = await this.prisma.email.findUnique({
       where: { email },
-      select: {
-        id: true,
-        email: true,
-        socialProvider: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        profile: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            isEmailVerified: true,
-            isOnboarded: true,
-            city: true,
-            state: true,
-            country: true,
-            address: true,
-            pictureUrl: true,
-            resumeUrl: true,
-          },
-        },
-      },
+      include: { user: { include: { profile: true } } },
     });
 
-    if (!user) {
+    if (!emailRow?.user) {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    return emailRow.user;
   }
 
   async updateUser(id: string, updateUserDto: UpdateUserDto) {
-    const { email, firstName, lastName, role, isEmailVerified, ...updateData } =
-      updateUserDto;
+    const { email, firstName, lastName, role, ...updateData } = updateUserDto;
 
-    // If email is being updated, check if it's already taken
-    if (email) {
-      const existingUser = await this.prisma.user.findUnique({
+    // Ensure user exists and fetch current email relation
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id },
+      include: { email: true, profile: true },
+    });
+
+    if (!currentUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const currentEmailStr = currentUser.email?.email ?? null;
+    const shouldUpdateEmail = !!email && email !== currentEmailStr;
+
+    // If email is being updated, check if it's already taken in emails table
+    if (shouldUpdateEmail) {
+      const existingEmail = await this.prisma.email.findUnique({
         where: { email },
       });
-
-      if (existingUser && existingUser.id !== id) {
+      if (existingEmail && existingEmail.id !== currentUser.emailId) {
         throw new ConflictException('Email is already taken by another user');
       }
     }
 
     // Prepare profile updates (only non-id fields)
     const profileData: {
-      firstName: string | null;
-      lastName: string | null;
-      role?: $Enums.UserRole;
-      isEmailVerified?: boolean;
-    } = {
-      firstName: null,
-      lastName: null,
-    };
-    if (firstName) profileData.firstName = firstName;
-    if (lastName) profileData.lastName = lastName;
-    if (role) profileData.role = role;
-    if (isEmailVerified) profileData.isEmailVerified = isEmailVerified;
+      firstName?: string | null;
+      lastName?: string | null;
+      role?: UserRole;
+    } = {};
 
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: {
-        ...updateData,
-        ...(email && { email }),
-        ...(Object.keys(profileData).length > 0 && {
-          profile: {
-            update: profileData,
-          },
-        }),
-      },
-      select: {
-        id: true,
-        email: true,
-        socialProvider: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        profile: {
-          select: {
-            firstName: true,
-            lastName: true,
-            role: true,
-            isEmailVerified: true,
-          },
+    if (firstName !== undefined) profileData.firstName = firstName;
+    if (lastName !== undefined) profileData.lastName = lastName;
+    if (role !== undefined) profileData.role = role;
+
+    // Run updates in a transaction
+    const updated = await this.prisma.$transaction(async (tx) => {
+      let emailRow = currentUser.email ?? undefined;
+      if (shouldUpdateEmail) {
+        if (emailRow) {
+          emailRow = await tx.email.update({
+            where: { id: emailRow.id },
+            data: { email, isVerified: false },
+          });
+        } else {
+          const created = await tx.email.create({
+            data: { email, isVerified: false, provider: SocialProvider.EMAIL },
+          });
+          await tx.user.update({
+            where: { id },
+            data: { emailId: created.id },
+          });
+          emailRow = created;
+        }
+      }
+
+      const user = await tx.user.update({
+        where: { id },
+        data: {
+          ...updateData,
+          ...(Object.keys(profileData).length > 0 && {
+            profile: { update: profileData },
+          }),
         },
-      },
+        include: { email: true, profile: true },
+      });
+      return user;
     });
 
-    return user;
+    return updated;
   }
 
   async deleteUser(id: string) {
@@ -269,6 +285,85 @@ export class UsersService {
     });
 
     return { message: 'User deleted successfully' };
+  }
+
+  // ==================== EMAIL OPERATIONS ====================
+
+  async createAndAssignEmail(userId: string, emailAddress: string) {
+    // Check if user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check if email already exists in the system
+    const existingEmail = await this.prisma.email.findUnique({
+      where: { email: emailAddress },
+    });
+
+    if (existingEmail) {
+      throw new ConflictException(
+        'This email is already in use by another account',
+      );
+    }
+
+    // Create new email and assign to user in a transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      const newEmail = await tx.email.create({
+        data: {
+          email: emailAddress,
+          isVerified: false,
+          provider: SocialProvider.EMAIL,
+        },
+      });
+
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: { emailId: newEmail.id },
+        include: { email: true, profile: true },
+      });
+
+      return updatedUser;
+    });
+
+    return {
+      id: result.id,
+      email: result.email,
+      isActive: result.isActive,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+    };
+  }
+
+  // ==================== REAUTHENTICATION ====================
+
+  async reAuthenticate(userId: string, password: string) {
+    // Get user with password
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check if user has a password (social login users might not)
+    if (!user.password) {
+      throw new BadRequestException(
+        'This account does not have a password. Please use social login instead.',
+      );
+    }
+
+    // Compare password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    return {
+      isAuthenticated: isPasswordValid,
+    };
   }
 
   // ==================== PROFILE CRUD OPERATIONS ====================
@@ -307,16 +402,7 @@ export class UsersService {
     const profile = await this.prisma.profile.findUnique({
       where: { userId },
       include: {
-        phoneNumbers: {
-          select: {
-            id: true,
-            countryCode: true,
-            number: true,
-            isVerified: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
+        phoneNumbers: { include: { phoneNumber: true } },
       },
     });
 
@@ -372,6 +458,26 @@ export class UsersService {
 
   // ==================== PHONE NUMBER OPERATIONS ====================
 
+  private normalizePhoneOrThrow(countryCode: string, number: string) {
+    const cc = countryCode?.trim();
+    const num = number?.trim();
+    if (!cc || !num) {
+      throw new BadRequestException(
+        'countryCode and number are required to set phone number',
+      );
+    }
+
+    const parsed = parsePhoneNumberFromString(`${cc}${num}`);
+    if (!parsed || !parsed.isValid()) {
+      throw new BadRequestException('Invalid phone number');
+    }
+
+    return {
+      countryCode: `+${parsed.countryCallingCode}`,
+      number: parsed.nationalNumber,
+    };
+  }
+
   async setPhoneNumber(
     userId: string,
     createPhoneNumberDto: CreatePhoneNumberDto,
@@ -392,70 +498,107 @@ export class UsersService {
       );
     }
 
-    // Check if phone number already exists for this user
-    const existingPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
-      where: { userId },
+    const profileId = user.profile.id;
+
+    // Resolve or create PhoneNumber record
+    const { countryCode, number } = this.normalizePhoneOrThrow(
+      createPhoneNumberDto.countryCode,
+      createPhoneNumberDto.number,
+    );
+
+    let phone = await this.prisma.phoneNumber.findFirst({
+      where: { countryCode, number },
+    });
+    if (!phone) {
+      phone = await this.prisma.phoneNumber.create({
+        data: { countryCode, number, isVerified: false },
+      });
+    }
+
+    // Find existing join for this profile
+    const existingJoin = await this.prisma.userPhoneNumber.findFirst({
+      where: { profileId },
     });
 
-    if (existingPhoneNumber) {
-      // Update existing phone number
-      const phoneNumber = await this.prisma.userPhoneNumber.update({
-        where: { id: existingPhoneNumber.id },
-        data: {
-          countryCode: createPhoneNumberDto.countryCode,
-          number: createPhoneNumberDto.number,
-          isVerified: false, // Reset verification when changing number
-        },
+    if (existingJoin) {
+      const updatedJoin = await this.prisma.userPhoneNumber.update({
+        where: { id: existingJoin.id },
+        data: { phoneNumberId: phone.id },
+        include: { phoneNumber: true },
       });
-      return phoneNumber;
-    } else {
-      // Create new phone number
-      const phoneNumber = await this.prisma.userPhoneNumber.create({
-        data: {
-          userId,
-          profileId: user.profile.id,
-          ...createPhoneNumberDto,
-        },
-      });
-      return phoneNumber;
+      return updatedJoin;
     }
+
+    const createdJoin = await this.prisma.userPhoneNumber.create({
+      data: { profileId, phoneNumberId: phone.id },
+      include: { phoneNumber: true },
+    });
+    return createdJoin;
   }
 
   async updateUserPhoneNumber(
     userId: string,
     updateData: UpdatePhoneNumberDto,
   ) {
-    // Check if user exists and has a phone number
-    const existingPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
-      where: { userId },
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
     });
+    if (!user?.profile) {
+      throw new NotFoundException('Profile not found');
+    }
 
-    if (!existingPhoneNumber) {
+    const existingJoin = await this.prisma.userPhoneNumber.findFirst({
+      where: { profileId: user.profile.id },
+    });
+    if (!existingJoin) {
       throw new NotFoundException('Phone number not found for this user');
     }
 
-    // Update phone number
-    const phoneNumber = await this.prisma.userPhoneNumber.update({
-      where: { id: existingPhoneNumber.id },
-      data: updateData,
+    const { countryCode, number } = this.normalizePhoneOrThrow(
+      updateData.countryCode ?? '',
+      updateData.number ?? '',
+    );
+    let phone = await this.prisma.phoneNumber.findFirst({
+      where: { countryCode, number },
     });
+    if (!phone) {
+      phone = await this.prisma.phoneNumber.create({
+        data: { countryCode, number, isVerified: false },
+      });
+    }
 
-    return phoneNumber;
+    const updatedJoin = await this.prisma.userPhoneNumber.update({
+      where: { id: existingJoin.id },
+      data: { phoneNumberId: phone.id },
+      include: { phoneNumber: true },
+    });
+    await this.prisma.phoneNumber.delete({
+      where: {
+        id: existingJoin.phoneNumberId,
+        userPhoneNumbers: { none: {} },
+      },
+    });
+    return updatedJoin;
   }
 
   async deleteUserPhoneNumber(userId: string) {
-    // Check if user has a phone number
-    const existingPhoneNumber = await this.prisma.userPhoneNumber.findFirst({
-      where: { userId },
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
     });
-
-    if (!existingPhoneNumber) {
+    if (!user?.profile) {
+      throw new NotFoundException('Profile not found');
+    }
+    const existingJoin = await this.prisma.userPhoneNumber.findFirst({
+      where: { profileId: user.profile.id },
+    });
+    if (!existingJoin) {
       throw new NotFoundException('Phone number not found for this user');
     }
 
-    // Delete phone number
     await this.prisma.userPhoneNumber.delete({
-      where: { id: existingPhoneNumber.id },
+      where: { id: existingJoin.id },
     });
 
     return { message: 'Phone number deleted successfully' };
@@ -476,24 +619,17 @@ export class UsersService {
       throw new NotFoundException('No phone number found');
     }
 
-    // Get single phone number for the user
+    // Get single phone number for the user (first join)
     const phoneNumber = await this.prisma.userPhoneNumber.findFirst({
-      where: { userId },
-      select: {
-        id: true,
-        countryCode: true,
-        number: true,
-        isVerified: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      where: { profileId: user.profile.id },
+      include: { phoneNumber: true },
     });
 
     if (!phoneNumber) {
       throw new NotFoundException('No phone number found');
     }
 
-    return phoneNumber;
+    return phoneNumber?.phoneNumber;
   }
 
   // ==================== UTILITY METHODS ====================
@@ -503,8 +639,8 @@ export class UsersService {
     const activeUsers = await this.prisma.user.count({
       where: { isActive: true },
     });
-    const verifiedUsers = await this.prisma.profile.count({
-      where: { isEmailVerified: true },
+    const verifiedUsers = await this.prisma.email.count({
+      where: { isVerified: true },
     });
     const usersWithProfiles = await this.prisma.profile.count();
 
@@ -521,24 +657,14 @@ export class UsersService {
     const users = await this.prisma.user.findMany({
       where: {
         OR: [
-          { email: { contains: query, mode: 'insensitive' } },
+          {
+            email: { is: { email: { contains: query, mode: 'insensitive' } } },
+          },
           { profile: { firstName: { contains: query, mode: 'insensitive' } } },
           { profile: { lastName: { contains: query, mode: 'insensitive' } } },
         ],
       },
-      select: {
-        id: true,
-        email: true,
-        isActive: true,
-        createdAt: true,
-        profile: {
-          select: {
-            firstName: true,
-            lastName: true,
-            role: true,
-          },
-        },
-      },
+      include: { email: true, profile: true },
       take: 20, // Limit results
     });
 
@@ -588,7 +714,7 @@ export class UsersService {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       educations: profile.educations,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      skills: profile.profileSkills.map((ps) => ps.skillId as string),
+      skillIds: profile.profileSkills.map((ps) => ps.skillId),
     };
   }
 

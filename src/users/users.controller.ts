@@ -31,6 +31,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
 import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
 import { CvDetailsDto } from './dto/cv-details.dto';
+import { ReauthenticateDto } from './dto/reauthenticate.dto';
 import { AddSkillToProfileDto } from '../skills/dto/add-skill-to-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -112,7 +113,7 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getCurrentUser(@Req() req: Request) {
-    return this.usersService.findUserById(req.user!.id);
+    return this.usersService.getCurrentUser(req.user!.id);
   }
 
   @Put('me/resume')
@@ -158,6 +159,34 @@ export class UsersController {
     return {
       resumeUrl: updatedProfile.resumeUrl,
     };
+  }
+
+  @Post('me/reauthenticate')
+  @ApiOperation({ summary: 'Reauthenticate user with password' })
+  @ApiBody({
+    type: ReauthenticateDto,
+    description: 'Password for reauthentication',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reauthentication result',
+    schema: {
+      example: {
+        isAuthenticated: true,
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async reAuthenticate(
+    @Req() req: Request,
+    @Body() reauthenticateDto: ReauthenticateDto,
+  ) {
+    return this.usersService.reAuthenticate(
+      req.user!.id,
+      reauthenticateDto.password,
+    );
   }
 
   @Get('me/cv-details')
@@ -211,6 +240,63 @@ export class UsersController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(req.user!.id, updateUserDto);
+  }
+
+  @Post('me/create-email')
+  @ApiOperation({
+    summary: 'Create and assign a new email to current user',
+    description:
+      'Creates a new email address and assigns it to the current user. The previous email will be replaced.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: {
+          type: 'string',
+          description: 'Email address to create and assign',
+          example: 'newemail@example.com',
+        },
+      },
+      required: ['email'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Email created and assigned successfully',
+    schema: {
+      example: {
+        id: 'user123',
+        email: {
+          id: 'email456',
+          email: 'newemail@example.com',
+          isVerified: false,
+          provider: 'EMAIL',
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+        isActive: true,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid email' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict - Email already in use by another account',
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async createAndAssignEmail(
+    @Req() req: Request,
+    @Body() body: { email: string },
+  ) {
+    if (!body.email) {
+      throw new BadRequestException('Email is required');
+    }
+
+    return this.usersService.createAndAssignEmail(req.user!.id, body.email);
   }
 
   @Put(':id')
