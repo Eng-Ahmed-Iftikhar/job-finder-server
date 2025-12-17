@@ -87,6 +87,7 @@ model Profile {
   experiences Experience[]
   educations Education[]
   profileSkills ProfileSkill[]
+  notificationSettings NotificationSetting?
 
   @@map("profiles")
 }
@@ -185,6 +186,36 @@ model UserPhoneNumber {
 
   @@unique([profileId, phoneNumberId])
   @@map("user_phone_numbers")
+}
+
+// Notification settings for user preferences
+model NotificationSetting {
+  id                                      String   @id @default(cuid())
+  profileId                               String   @unique
+  
+  // Interview notifications
+  jobInterviewScheduledSystem              Boolean  @default(true)
+  jobInterviewScheduledEmail               Boolean  @default(true)
+  
+  // Connection request notifications
+  connectionRequestSystem                  Boolean  @default(true)
+  connectionRequestEmail                   Boolean  @default(true)
+  
+  // Job opening notifications
+  newJobOpeningSystem                      Boolean  @default(true)
+  newJobOpeningEmail                       Boolean  @default(true)
+  
+  // Interview reminder notifications
+  interviewReminderSystem                  Boolean  @default(false)
+  interviewReminderEmail                   Boolean  @default(true)
+  
+  createdAt                                DateTime @default(now())
+  updatedAt                                DateTime @updatedAt
+
+  // Relations
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
 }
 
 enum UserRole {

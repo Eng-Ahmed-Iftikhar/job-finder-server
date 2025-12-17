@@ -9,6 +9,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { EmailModule } from './email/email.module';
 import { SkillsModule } from './skills/skills.module';
+import { NotificationSettingsModule } from './notification-settings/notification-settings.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SkillsModule } from './skills/skills.module';
     PrismaModule,
     EmailModule,
     SkillsModule,
+    NotificationSettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

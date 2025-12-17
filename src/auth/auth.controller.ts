@@ -10,13 +10,13 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto, RegisterDto } from './dto/create-auth.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { VerifyPhoneCodeDto } from './dto/phone-verification.dto';
@@ -273,8 +273,6 @@ export class AuthController {
   }
 
   @Post('reset-password')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password using reset code' })
   @ApiResponse({
@@ -290,53 +288,58 @@ export class AuthController {
     description: 'Unauthorized',
   })
   async resetPassword(
-    @Request() req: ExpressRequest,
     @Body() resetPasswordDto: ResetPasswordDto,
   ): Promise<{ message: string }> {
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`🔐 Password reset attempt: ${req.user?.email}`);
+      this.logger.log(`🔐 Password reset attempt: ${resetPasswordDto.code}`);
     }
-    const result = await this.authService.resetPassword(
-      req.user!.id,
-      resetPasswordDto,
-    );
+    const result = await this.authService.resetPassword(resetPasswordDto);
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Password reset successfully: ${req.user?.email}`);
+      this.logger.log(
+        `✅ Password reset successfully: ${resetPasswordDto.code}`,
+      );
     }
     return result;
   }
 
-  @Post('change-password')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Post('verify-reset-code')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Change password (requires current password)' })
+  @ApiOperation({ summary: 'Verify if password reset code is valid' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        resetCode: {
+          type: 'string',
+          description: 'The password reset code to verify',
+          example: '123456',
+        },
+      },
+      required: ['resetCode'],
+    },
+  })
   @ApiResponse({
     status: 200,
-    description: 'Password changed successfully',
+    description: 'Reset code is valid',
+    schema: {
+      example: {
+        message: 'Reset code is valid',
+        valid: true,
+      },
+    },
   })
   @ApiResponse({
     status: 400,
-    description: 'Invalid current password or same as new password',
+    description: 'Invalid or expired reset code',
   })
-  @ApiResponse({
-    status: 401,
-    description: 'Unauthorized',
-  })
-  async changePassword(
-    @Request() req: ExpressRequest,
-    @Body() changePasswordDto: ChangePasswordDto,
-  ): Promise<{ message: string }> {
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`🔐 Password change attempt: ${req.user?.email}`);
-    }
-    const result = await this.authService.changePassword(
-      req.user!.id,
-      changePasswordDto,
+  async verifyResetCode(
+    @Body() body: { code: string; email: string },
+  ): Promise<{ message: string; valid: boolean }> {
+    const result = await this.authService.verifyResetCode(
+      body.email,
+      body.code,
     );
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`✅ Password changed successfully: ${req.user?.email}`);
-    }
+
     return result;
   }
 

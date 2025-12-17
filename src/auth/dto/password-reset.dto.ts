@@ -17,8 +17,8 @@ export class ResetPasswordDto {
   @ApiProperty({ example: '123456', description: '6-digit reset code' })
   @IsString()
   @IsNotEmpty()
-  @Length(6, 6, { message: 'Reset code must be exactly 6 digits' })
-  resetCode: string;
+  @Length(5, 5, { message: 'Reset code must be exactly 5 digits' })
+  code: string;
 
   @ApiProperty({ example: 'newPassword123', minLength: 6 })
   @IsString()

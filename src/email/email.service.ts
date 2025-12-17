@@ -104,6 +104,60 @@ export class EmailService {
     }
   }
 
+  async sendPasswordResetConfirmationEmail(
+    email: string,
+    firstName: string,
+  ): Promise<void> {
+    const mailOptions = {
+      from: `"Job Finder" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Password Reset Confirmation ✅',
+      html: this.getPasswordResetConfirmationEmailTemplate(firstName),
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.log(
+          `✅ Password reset confirmation email sent to: ${email}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to send password reset confirmation email to ${email}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async sendPasswordChangeConfirmationEmail(
+    email: string,
+    firstName: string,
+  ): Promise<void> {
+    const mailOptions = {
+      from: `"Job Finder" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Password Changed Successfully ✅',
+      html: this.getPasswordChangeConfirmationEmailTemplate(firstName),
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.log(
+          `✅ Password change confirmation email sent to: ${email}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to send password change confirmation email to ${email}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
   private getWelcomeEmailTemplate(firstName: string): string {
     return `
       <!DOCTYPE html>
@@ -227,6 +281,97 @@ export class EmailService {
               <strong>⚠️ Important:</strong> This link will expire in 15 minutes for security reasons.
             </div>
             <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
+            <p>Best regards,<br>The Job Finder Team</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  private getPasswordResetConfirmationEmailTemplate(firstName: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #059669; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+          .success { background: #d1fae5; border: 1px solid #10b981; padding: 15px; border-radius: 6px; margin: 20px 0; color: #065f46; }
+          .button { background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Password Reset Successfully</h1>
+          </div>
+          <div class="content">
+            <h2>Hello ${firstName}!</h2>
+            <p>Your password has been successfully reset!</p>
+            <div class="success">
+              <strong>✓ Confirmed:</strong> Your password has been changed and you can now log in with your new password.
+            </div>
+            <p>If you did not request this password reset, please contact our support team immediately.</p>
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" class="button">
+              Log In Now
+            </a>
+            <p>For security reasons, we recommend:</p>
+            <ul>
+              <li>Use a strong, unique password</li>
+              <li>Don't share your password with anyone</li>
+              <li>Log out from other devices if needed</li>
+            </ul>
+            <p>Best regards,<br>The Job Finder Team</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  private getPasswordChangeConfirmationEmailTemplate(
+    firstName: string,
+  ): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #4f46e5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+          .success { background: #dbeafe; border: 1px solid #3b82f6; padding: 15px; border-radius: 6px; margin: 20px 0; color: #1e40af; }
+          .button { background: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Password Changed Successfully</h1>
+          </div>
+          <div class="content">
+            <h2>Hello ${firstName}!</h2>
+            <p>Your password has been successfully changed!</p>
+            <div class="success">
+              <strong>✓ Confirmed:</strong> Your account password has been updated. You remain logged in on this session.
+            </div>
+            <p>If you did not make this change or do not recognize this activity, please change your password immediately and contact our support team.</p>
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" class="button">
+              Go to Dashboard
+            </a>
+            <p>Security tips:</p>
+            <ul>
+              <li>Never share your password with anyone</li>
+              <li>Use a unique password that you don't use elsewhere</li>
+              <li>Change your password regularly</li>
+              <li>Log out from other devices if you suspect unauthorized access</li>
+            </ul>
             <p>Best regards,<br>The Job Finder Team</p>
           </div>
         </div>

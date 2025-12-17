@@ -15,14 +15,14 @@ import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   ProfileResponseDto,
   UserEmailResponseDto,
   UserPhoneNumberResponseDto,
-  UserResponseDto,
+  UserWithProfileResponseDto,
 } from '../auth/dto/user-response.dto';
 import { Profile } from '../types/user.types';
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 @Injectable()
 export class UsersService {
@@ -120,7 +120,7 @@ export class UsersService {
     });
   }
 
-  async getCurrentUser(userId: string): Promise<UserResponseDto> {
+  async getCurrentUser(userId: string): Promise<UserWithProfileResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -172,11 +172,13 @@ export class UsersService {
       updatedAt: profile.updatedAt,
     };
     return {
-      id: user.id,
-      email: user.email as unknown as UserEmailResponseDto,
-      isActive: user.isActive,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      user: {
+        id: user.id,
+        email: user.email as unknown as UserEmailResponseDto,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
       profile: userProfile as never,
     };
   }
@@ -505,6 +507,26 @@ export class UsersService {
       createPhoneNumberDto.countryCode,
       createPhoneNumberDto.number,
     );
+
+    // Check if this phone number is already assigned to another user
+    const existingPhoneForOtherUser =
+      await this.prisma.userPhoneNumber.findFirst({
+        where: {
+          phoneNumber: { countryCode, number },
+          profile: { userId: { not: userId } },
+          NOT: { profileId },
+        },
+        include: {
+          profile: { include: { user: true } },
+          phoneNumber: true,
+        },
+      });
+
+    if (existingPhoneForOtherUser) {
+      throw new ConflictException(
+        'This phone number is already assigned to another user',
+      );
+    }
 
     let phone = await this.prisma.phoneNumber.findFirst({
       where: { countryCode, number },

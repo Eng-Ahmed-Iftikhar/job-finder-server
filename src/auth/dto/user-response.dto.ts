@@ -126,7 +126,14 @@ export class UserResponseDto {
 
   @ApiProperty({ description: 'Account last update date' })
   updatedAt: Date;
+}
 
+export class UserWithProfileResponseDto {
+  @ApiProperty({
+    description: 'User information',
+    type: UserResponseDto,
+  })
+  user: UserResponseDto;
   @ApiProperty({
     description: 'User profile information',
     type: ProfileResponseDto,

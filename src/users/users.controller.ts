@@ -32,12 +32,14 @@ import { CreatePhoneNumberDto } from './dto/create-phone-number.dto';
 import { UpdatePhoneNumberDto } from './dto/update-phone-number.dto';
 import { CvDetailsDto } from './dto/cv-details.dto';
 import { ReauthenticateDto } from './dto/reauthenticate.dto';
+import { ChangePasswordDto } from '../auth/dto/change-password.dto';
 import { AddSkillToProfileDto } from '../skills/dto/add-skill-to-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../types/user.types';
 import { SkillsService } from '../skills/skills.service';
+import { AuthService } from '../auth/auth.service';
 
 @ApiTags('Users')
 @Controller('users')
@@ -47,6 +49,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly skillsService: SkillsService,
+    private readonly authService: AuthService,
   ) {}
 
   // ==================== USER CRUD ENDPOINTS ====================
@@ -240,6 +243,28 @@ export class UsersController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(req.user!.id, updateUserDto);
+  }
+
+  @Put('me/change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change password (requires current password)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password changed successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid current password or same as new password',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+  })
+  async changePassword(
+    @Req() req: Request,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.changePassword(req.user!.id, changePasswordDto);
   }
 
   @Post('me/create-email')

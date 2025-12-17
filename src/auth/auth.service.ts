@@ -560,15 +560,81 @@ export class AuthService {
   }
 
   async resetPassword(
-    userId: string,
     resetPasswordDto: ResetPasswordDto,
   ): Promise<{ message: string }> {
-    const { resetCode, newPassword } = resetPasswordDto;
+    const { code, newPassword } = resetPasswordDto;
 
-    // Find user by ID
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+    // Find valid password reset code
+    const validCode = await this.prisma.verificationCode.findFirst({
+      where: {
+        code,
+        type: VerificationCodeType.PASSWORD_RESET,
+        isUsed: false,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
     });
+
+    if (!validCode) {
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password and mark code as used in transaction
+    await this.prisma.$transaction([
+      this.prisma.verificationCode.update({
+        where: { id: validCode.id },
+        data: { isUsed: true },
+      }),
+      this.prisma.user.update({
+        where: { id: validCode.userId },
+        data: { password: hashedPassword },
+      }),
+    ]);
+
+    // Send password reset confirmation email
+    try {
+      const userWithProfile = await this.prisma.user.findUnique({
+        where: { id: validCode.userId },
+        include: { profile: true, email: true },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      await this.emailService.sendPasswordResetConfirmationEmail(
+        userWithProfile?.email?.email ?? '',
+        userWithProfile?.profile?.firstName as string,
+      );
+    } catch (error) {
+      this.logger.error(
+        'Failed to send password reset confirmation email:',
+        error as Error,
+      );
+    }
+
+    // Invalidate all user's refresh tokens by deleting from storage
+    // Note: This will log out the user from all devices for security
+    try {
+      // We would need to store user sessions differently to invalidate all tokens
+      // For now, we'll just invalidate the current user's tokens on next refresh attempt
+    } catch (error) {
+      console.error('Failed to invalidate refresh tokens:', error);
+    }
+
+    return { message: 'Password reset successfully' };
+  }
+
+  async verifyResetCode(
+    email: string,
+    resetCode: string,
+  ): Promise<{ message: string; valid: boolean }> {
+    // Find user by email via Email table
+    const emailRow = await this.prisma.email.findUnique({
+      where: { email },
+      include: { user: true },
+    });
+    const user = emailRow?.user ?? null;
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -595,31 +661,7 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired reset code');
     }
 
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-    // Update password and mark code as used in transaction
-    await this.prisma.$transaction([
-      this.prisma.verificationCode.update({
-        where: { id: validCode.id },
-        data: { isUsed: true },
-      }),
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: { password: hashedPassword },
-      }),
-    ]);
-
-    // Invalidate all user's refresh tokens by deleting from storage
-    // Note: This will log out the user from all devices for security
-    try {
-      // We would need to store user sessions differently to invalidate all tokens
-      // For now, we'll just invalidate the current user's tokens on next refresh attempt
-    } catch (error) {
-      console.error('Failed to invalidate refresh tokens:', error);
-    }
-
-    return { message: 'Password reset successfully' };
+    return { message: 'Reset code is valid', valid: true };
   }
 
   // Change password for authenticated users
@@ -675,6 +717,24 @@ export class AuthService {
       where: { id: userId },
       data: { password: hashedNewPassword },
     });
+
+    // Send password change confirmation email
+    try {
+      const userWithProfile = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { profile: true, email: true },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      await this.emailService.sendPasswordChangeConfirmationEmail(
+        userWithProfile?.email?.email ?? '',
+        userWithProfile?.profile?.firstName as string,
+      );
+    } catch (error) {
+      this.logger.error(
+        'Failed to send password change confirmation email:',
+        error as Error,
+      );
+    }
 
     return { message: 'Password changed successfully' };
   }
