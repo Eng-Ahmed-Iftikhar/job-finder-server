@@ -1,7 +1,7 @@
 export enum UserRole {
-  USER = 'USER',
-  ADMIN = 'ADMIN',
-  MODERATOR = 'MODERATOR',
+  EMPLOYEE = 'EMPLOYEE',
+  EMPLOYER = 'EMPLOYER',
+  OWNER = 'OWNER',
 }
 
 export enum VerificationCodeType {
@@ -34,13 +34,16 @@ export interface Profile {
   userId: string;
   firstName?: string | null;
   lastName?: string | null;
-  isEmailVerified: boolean;
   isOnboarded: boolean;
   role: UserRole;
-  city?: string | null;
-  state?: string | null;
-  country?: string | null;
-  address?: string | null;
+  location: {
+    city?: string | null;
+    state?: string | null;
+    country?: string | null;
+    id?: string | null;
+  };
+  phoneNumbers?: UserPhoneNumber[];
+  address: string | null;
   bio?: string | null;
   pictureUrl?: string | null;
   resumeUrl?: string | null;
@@ -50,14 +53,18 @@ export interface Profile {
 
 export interface UserPhoneNumber {
   id: string;
-  userId: string;
+  phoneNumberId: string;
   profileId: string;
-  countryCode: string;
-  number: string;
-  isVerified: boolean;
+  phoneNumber?: PhoneNumber;
+  profile?: Profile;
   createdAt: Date;
   updatedAt: Date;
 }
+export type PhoneNumber = {
+  countryCode: string;
+  number: string;
+  isVerified: boolean;
+};
 
 export type UserProfile = {
   generalInfo?: UserGeneralInfo;

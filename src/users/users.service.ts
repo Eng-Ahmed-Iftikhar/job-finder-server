@@ -19,7 +19,6 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   ProfileResponseDto,
   UserEmailResponseDto,
-  UserPhoneNumberResponseDto,
   UserWithProfileResponseDto,
 } from '../auth/dto/user-response.dto';
 import { Profile } from '../types/user.types';
@@ -69,7 +68,7 @@ export class UsersService {
             create: {
               firstName,
               lastName,
-              role: (role as UserRole) ?? UserRole.USER,
+              role: (role as UserRole) ?? UserRole.EMPLOYEE,
             },
           },
         },
@@ -128,6 +127,7 @@ export class UsersService {
         profile: {
           include: {
             phoneNumbers: { include: { phoneNumber: true } },
+            location: true,
           },
         },
       },
@@ -144,10 +144,6 @@ export class UsersService {
       throw new BadRequestException('User profile not found');
     }
 
-    const phoneNumbers = user.profile?.phoneNumbers?.map(
-      (j) => j.phoneNumber,
-    ) as UserPhoneNumberResponseDto[] | undefined;
-
     // Transform the response to match the new UserProfile structure
     const profile = user.profile as unknown as Profile; // Non-null assertion after check
     const userProfile: ProfileResponseDto = {
@@ -157,20 +153,25 @@ export class UsersService {
         lastName: profile.lastName ?? '',
       },
       location: {
-        city: profile.city ?? '',
-        state: profile.state ?? '',
-        country: profile.country ?? '',
+        id: profile.location?.id ?? undefined,
+        city: profile.location?.city ?? '',
+        state: profile.location?.state ?? '',
+        country: profile.location?.country ?? '',
         address: profile.address ?? '',
       },
-      phoneNumber: phoneNumbers ? phoneNumbers[0] : undefined, // Take the first phone number if exists
+      phoneNumber:
+        user.profile.phoneNumbers.length > 0
+          ? user.profile.phoneNumbers[0].phoneNumber
+          : undefined,
       pictureUrl: profile.pictureUrl ?? undefined,
       resumeUrl: profile.resumeUrl ?? undefined,
-      role: profile.role ?? 'USER',
-      isEmailVerified: user.email?.isVerified ?? false,
+      role: profile.role,
       isOnboarded: profile.isOnboarded ?? false,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };
+    console.log({ userProfile });
+
     return {
       user: {
         id: user.id,
@@ -379,6 +380,21 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    const { city, country, state, ...otherData } = createProfileDto;
+    let locationId = '';
+    const location = (await this.prisma.location.findFirst({
+      where: { city, country, state },
+      select: { id: true },
+    })) as { id: string } | null;
+    if (location) {
+      locationId = location.id;
+    } else {
+      const newLocation = (await this.prisma.location.create({
+        data: { city, country, state },
+        select: { id: true },
+      })) as { id: string };
+      locationId = newLocation.id;
+    }
 
     // Check if profile already exists
     const existingProfile = await this.prisma.profile.findUnique({
@@ -393,7 +409,8 @@ export class UsersService {
     const profile = await this.prisma.profile.create({
       data: {
         userId,
-        ...createProfileDto,
+        ...otherData,
+        ...(locationId && { locationId }),
       },
     });
 
@@ -405,6 +422,7 @@ export class UsersService {
       where: { userId },
       include: {
         phoneNumbers: { include: { phoneNumber: true } },
+        location: true,
       },
     });
 
@@ -425,16 +443,48 @@ export class UsersService {
       throw new NotFoundException('Profile not found');
     }
 
+    // Extract city, state, country from DTO
+    const { city, country, state, ...otherData } = updateProfileDto;
+
     // If resumeUrl is being updated, mark user as onboarded
-    const updateData = { ...updateProfileDto };
+    const updateData = { ...otherData };
     if (updateProfileDto.resumeUrl) {
       updateData.isOnboarded = true;
+    }
+
+    // Handle location resolution if city, country, or state are provided
+    let locationId = '';
+    if (city !== undefined || country !== undefined || state !== undefined) {
+      // Search for existing location with these coordinates
+      const location = (await this.prisma.location.findFirst({
+        where: {
+          city: city ?? null,
+          country: country ?? null,
+          state: state ?? null,
+        },
+        select: { id: true },
+      })) as { id: string } | null;
+
+      if (location) {
+        locationId = location.id;
+      } else {
+        // Create new location if it doesn't exist
+        const newLocation = (await this.prisma.location.create({
+          data: {
+            city: city ?? null,
+            country: country ?? null,
+            state: state ?? null,
+          },
+          select: { id: true },
+        })) as { id: string };
+        locationId = newLocation.id;
+      }
     }
 
     // Update profile
     const profile = await this.prisma.profile.update({
       where: { userId },
-      data: updateData,
+      data: { ...updateData, ...(locationId && { locationId }) },
     });
 
     return profile;
@@ -731,11 +781,8 @@ export class UsersService {
     return {
       bio: profile.bio,
       resumeUrl: profile.resumeUrl,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       experiences: profile.experiences,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       educations: profile.educations,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       skillIds: profile.profileSkills.map((ps) => ps.skillId),
     };
   }
@@ -782,7 +829,6 @@ export class UsersService {
       // Delete existing experiences, educations, and profile skills
       await tx.experience.deleteMany({ where: { profileId } });
       await tx.education.deleteMany({ where: { profileId } });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await tx.profileSkill.deleteMany({ where: { profileId } });
 
       // Create new experiences
@@ -827,7 +873,7 @@ export class UsersService {
         }
 
         // Link skills to profile
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+
         await tx.profileSkill.createMany({
           data: cvDetails.skillIds.map((skillId) => ({
             profileId,

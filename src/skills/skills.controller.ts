@@ -35,8 +35,8 @@ export class SkillsController {
   constructor(private readonly skillsService: SkillsService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.USER)
-  @ApiOperation({ summary: 'Create a new skill (Admin only)' })
+  @Roles(UserRole.OWNER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: 'Create a new skill (Owner only)' })
   @ApiResponse({ status: 201, description: 'Skill created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 409, description: 'Skill already exists' })
@@ -96,8 +96,8 @@ export class SkillsController {
   }
 
   @Get('stats')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get skill statistics (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Get skill statistics (Owner only)' })
   @ApiResponse({
     status: 200,
     description: 'Statistics retrieved successfully',
@@ -120,8 +120,8 @@ export class SkillsController {
   }
 
   @Put(':id')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Update skill by ID (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Update skill by ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'Skill ID' })
   @ApiResponse({ status: 200, description: 'Skill updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -139,9 +139,9 @@ export class SkillsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete skill by ID (Admin only)' })
+  @ApiOperation({ summary: 'Delete skill by ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'Skill ID' })
   @ApiResponse({ status: 204, description: 'Skill deleted successfully' })
   @ApiResponse({ status: 400, description: 'Skill is being used by profiles' })

@@ -30,6 +30,9 @@ export class UserGeneralInfoResponseDto {
 }
 
 export class UserLocationResponseDto {
+  @ApiProperty({ description: 'Location ID', required: false })
+  id?: string;
+
   @ApiProperty({ description: 'City' })
   city: string;
 
@@ -73,9 +76,6 @@ export class ProfileResponseDto {
 
   @ApiProperty({ description: 'Resume URL', required: false })
   resumeUrl?: string;
-
-  @ApiProperty({ description: 'Whether email is verified', required: false })
-  isEmailVerified?: boolean;
 
   @ApiProperty({ description: 'Whether email is verified', required: false })
   isOnboarded?: boolean;

@@ -1,42 +1,41 @@
 import {
-  Controller,
-  Post,
-  Get,
-  Delete,
-  Param,
-  Query,
-  UseGuards,
-  Request,
-  UseInterceptors,
-  UploadedFile,
   Body,
-  Res,
+  Controller,
+  Delete,
+  FileTypeValidator,
+  Get,
   HttpCode,
   HttpStatus,
-  ParseFilePipe,
   MaxFileSizeValidator,
-  FileTypeValidator,
+  Param,
+  ParseFilePipe,
+  Post,
+  Query,
+  Request,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
   ApiParam,
   ApiQuery,
-  ApiConsumes,
-  ApiBody,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import type { Multer } from 'multer';
-import { FilesService } from './files.service';
-import { UploadFileDto, FileType } from './dto/upload-file.dto';
-import { FileResponseDto } from './dto/file-response.dto';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../types/user.types';
+import { FileResponseDto } from './dto/file-response.dto';
+import { FileType, UploadFileDto } from './dto/upload-file.dto';
+import { FilesService } from './files.service';
 
 @ApiTags('Files')
 @Controller('files')
@@ -318,7 +317,7 @@ export class FilesController {
   // ==================== ADMIN ENDPOINTS ====================
 
   @Get('admin/all-files')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @ApiOperation({
     summary: 'Get all files in the system (Admin only)',
     description:
@@ -357,12 +356,12 @@ export class FilesController {
   }
 
   @Delete('admin/:fileId')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Delete any file by ID (Admin only)',
+    summary: 'Delete any file by ID (Owner only)',
     description:
-      'Delete any file from Cloudinary storage. Admin access required.',
+      'Delete any file from Cloudinary storage. Owner access required.',
   })
   @ApiParam({
     name: 'fileId',

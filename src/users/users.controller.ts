@@ -55,8 +55,8 @@ export class UsersController {
   // ==================== USER CRUD ENDPOINTS ====================
 
   @Post()
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Create a new user (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Create a new user (Owner only)' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 409, description: 'User already exists' })
@@ -69,7 +69,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @ApiOperation({ summary: 'Get all users (Admin only)' })
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
   @ApiResponse({
@@ -81,7 +81,7 @@ export class UsersController {
   }
 
   @Get('stats')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @ApiOperation({ summary: 'Get user statistics (Admin only)' })
   @ApiResponse({
     status: 200,
@@ -96,8 +96,8 @@ export class UsersController {
   }
 
   @Get('search')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Search users (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Search users (Owner only)' })
   @ApiQuery({ name: 'q', description: 'Search query', required: true })
   @ApiResponse({
     status: 200,
@@ -219,7 +219,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @ApiOperation({ summary: 'Get user by ID (Admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User retrieved successfully' })
@@ -325,7 +325,7 @@ export class UsersController {
   }
 
   @Put(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @ApiOperation({ summary: 'Update user by ID (Admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
@@ -344,7 +344,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete user by ID (Admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
@@ -548,8 +548,8 @@ export class UsersController {
   // ==================== ADMIN PROFILE ENDPOINTS ====================
 
   @Get(':id/profile')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get user profile by user ID (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Get user profile by user ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
@@ -562,8 +562,8 @@ export class UsersController {
   }
 
   @Put(':id/profile')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Update user profile by user ID (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Update user profile by user ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Profile updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -580,9 +580,9 @@ export class UsersController {
   }
 
   @Delete(':id/profile')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete user profile by user ID (Admin only)' })
+  @ApiOperation({ summary: 'Delete user profile by user ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 204, description: 'Profile deleted successfully' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
@@ -597,8 +597,8 @@ export class UsersController {
   // ==================== ADMIN PHONE NUMBER ENDPOINTS ====================
 
   @Get(':id/phone-number')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get user phone number by user ID (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Get user phone number by user ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({
     status: 200,
@@ -661,8 +661,8 @@ export class UsersController {
   }
 
   @Get(':id/skills')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get user skills by user ID (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Get user skills by user ID (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Skills retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Profile not found' })
@@ -677,8 +677,8 @@ export class UsersController {
   }
 
   @Post(':id/skills')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Add skill to user profile (Admin only)' })
+  @Roles(UserRole.OWNER)
+  @ApiOperation({ summary: 'Add skill to user profile (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 201, description: 'Skill added successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -701,9 +701,9 @@ export class UsersController {
   }
 
   @Delete(':id/skills/:skillId')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove skill from user profile (Admin only)' })
+  @ApiOperation({ summary: 'Remove skill from user profile (Owner only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiParam({ name: 'skillId', description: 'Skill ID to remove' })
   @ApiResponse({ status: 204, description: 'Skill removed successfully' })

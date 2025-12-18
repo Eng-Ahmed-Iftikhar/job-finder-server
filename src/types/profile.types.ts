@@ -12,9 +12,10 @@ type UserGeneralInfo = {
 };
 
 type UserLocation = {
-  city: string;
-  state: string;
-  country: string;
+  locationId?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   address: string;
 };
 

@@ -10,6 +10,12 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { EmailModule } from './email/email.module';
 import { SkillsModule } from './skills/skills.module';
 import { NotificationSettingsModule } from './notification-settings/notification-settings.module';
+import { CompaniesModule } from './companies/companies.module';
+import { CompanyProfilesModule } from './company-profiles/company-profiles.module';
+import { WebsitesModule } from './websites/websites.module';
+import { ConnectionsModule } from './connections/connections.module';
+import { ConnectionRequestsModule } from './connection-requests/connection-requests.module';
+import { JobsModule } from './jobs/jobs.module';
 
 @Module({
   imports: [
@@ -24,6 +30,12 @@ import { NotificationSettingsModule } from './notification-settings/notification
     EmailModule,
     SkillsModule,
     NotificationSettingsModule,
+    CompaniesModule,
+    CompanyProfilesModule,
+    WebsitesModule,
+    ConnectionsModule,
+    ConnectionRequestsModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

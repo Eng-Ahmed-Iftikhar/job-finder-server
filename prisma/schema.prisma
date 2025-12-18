@@ -21,12 +21,22 @@ model User {
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   // Relations
   verificationCodes VerificationCode[]
   profile         Profile?
   emailId         String? @unique
   email           Email?    @relation(fields: [emailId], references: [id], onDelete: SetNull)
+  companyProfiles CompanyProfile[]
+  sentConnectionRequests ConnectionRequest[] @relation("SenderRequests")
+  receivedConnectionRequests ConnectionRequest[] @relation("ReceiverRequests")
+  employeeConnections Connection[] @relation("EmployeeConnections")
+  employerConnections Connection[] @relation("EmployerConnections")
+  companyFollowers CompanyFollower[]
+  employerJobs    JobEmployer[]
+  employeeJobs    JobEmployee[]
+  savedJobs       SavedJob[]
 
   @@map("users")
 }
@@ -40,6 +50,7 @@ model Email {
   provider  SocialProvider?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   // Relations
   user User?
@@ -56,6 +67,7 @@ model VerificationCode {
   isUsed    Boolean             @default(false)
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
+  deletedAt DateTime?
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -70,16 +82,15 @@ model Profile {
   firstName       String?
   lastName        String?
   isOnboarded     Boolean  @default(false)
-  role            UserRole @default(USER)
-  city            String?
-  state           String?
-  country         String?
+  role            UserRole @default(EMPLOYEE)
+  locationId      String?
   address         String?
   pictureUrl      String?
   bio             String? // profile bio
   resumeUrl       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -88,6 +99,7 @@ model Profile {
   educations Education[]
   profileSkills ProfileSkill[]
   notificationSettings NotificationSetting?
+  location    Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@map("profiles")
 }
@@ -103,6 +115,7 @@ model Experience {
   isCurrent   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -122,6 +135,7 @@ model Education {
   inProgress    Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -135,6 +149,7 @@ model Skill {
   name      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   // Relations
   profileSkills ProfileSkill[]
@@ -148,6 +163,7 @@ model ProfileSkill {
   profileId String
   skillId   String
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -165,6 +181,7 @@ model PhoneNumber {
   isVerified  Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   // Relations
   userPhoneNumbers UserPhoneNumber[]
@@ -179,6 +196,7 @@ model UserPhoneNumber {
   phoneNumberId String
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
 
   // Relations
   profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -186,6 +204,175 @@ model UserPhoneNumber {
 
   @@unique([profileId, phoneNumberId])
   @@map("user_phone_numbers")
+}
+
+// Location directory
+model Location {
+  id        String          @id @default(cuid())
+  city      String?
+  state     String?
+  country   String?
+  status    LocationStatus  @default(ENABLE)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  profiles Profile[]
+  companyProfiles CompanyProfile[]
+  jobs Job[]
+
+  @@map("locations")
+}
+
+// Company directory
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  profile CompanyProfile?
+  followers CompanyFollower[]
+
+  @@map("companies")
+}
+
+// Company followers (user follows company)
+model CompanyFollower {
+  id         String   @id @default(cuid())
+  companyId  String
+  followerId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  follower User    @relation(fields: [followerId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, followerId])
+  @@map("company_followers")
+}
+
+// Company profile model
+model CompanyProfile {
+  id         String   @id @default(cuid())
+  employerId String
+  companyId  String   @unique
+  locationId String?
+  address    String?
+  status     CompanyStatus @default(ENABLE)
+  websiteId  String?
+  pictureUrl String?
+  about      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  // Relations
+  employer User     @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  website  Website?  @relation(fields: [websiteId], references: [id], onDelete: SetNull)
+
+  @@map("company_profiles")
+}
+
+// Website directory
+model Website {
+  id        String   @id @default(cuid())
+  url       String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  companyProfiles CompanyProfile[]
+
+  @@map("websites")
+}
+
+// Job directory
+model Job {
+  id          String     @id @default(cuid())
+  name        String
+  address     String?
+  locationId  String?
+  description String?
+  jobType     JobType?
+  wage        Decimal?
+  wageRate    WageRate?
+  currency    String?
+  hiringStatus HiringStatus @default(NORMAL)
+  status      JobStatus  @default(DRAFT)
+  publishAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  location     Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  employers    JobEmployer[]
+  employees    JobEmployee[]
+  savedBy      SavedJob[]
+
+  @@map("jobs")
+}
+
+// Saved jobs (employee bookmarks a job)
+model SavedJob {
+  id          String   @id @default(cuid())
+  jobId       String
+  employeeId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, employeeId])
+  @@map("saved_jobs")
+}
+
+// Join table linking Job to Employer (User)
+model JobEmployer {
+  id         String   @id @default(cuid())
+  jobId      String
+  employerId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  // Relations
+  job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  employer User @relation(fields: [employerId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, employerId])
+  @@map("job_employers")
+}
+
+// Join table linking Job to Employee (User)
+model JobEmployee {
+  id          String              @id @default(cuid())
+  jobId       String
+  employeeId  String
+  status      JobEmployeeStatus   @default(APPLIED)
+  hiredAt     DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, employeeId])
+  @@map("job_employees")
 }
 
 // Notification settings for user preferences
@@ -211,6 +398,7 @@ model NotificationSetting {
   
   createdAt                                DateTime @default(now())
   updatedAt                                DateTime @updatedAt
+  deletedAt                                DateTime?
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -218,11 +406,42 @@ model NotificationSetting {
   @@map("notification_settings")
 }
 
+// Connection table between employee and employer
+model Connection {
+  id         String   @id @default(cuid())
+  employeeId String
+  employerId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  employee User @relation("EmployeeConnections", fields: [employeeId], references: [id], onDelete: Cascade)
+  employer User @relation("EmployerConnections", fields: [employerId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, employerId])
+  @@map("connections")
+}
+
+// Connection requests
+model ConnectionRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     ConnectionRequestStatus @default(PENDING)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  sender   User @relation("SenderRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceiverRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("connection_requests")
+}
+
 enum UserRole {
-  USER
-  ADMIN
+  OWNER
   EMPLOYER
-  CANDIDATE
+  EMPLOYEE
 }
 
 enum VerificationCodeType {
@@ -237,4 +456,54 @@ enum SocialProvider {
   FACEBOOK
   LINKEDIN
   GITHUB
+}
+
+enum LocationStatus {
+  ENABLE
+  DISABLE
+}
+
+enum CompanyStatus {
+  ENABLE
+  DISABLE
+}
+
+enum ConnectionRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum WageRate {
+  HOUR
+  WEEKLY
+  MONTH
+  YEAR
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  COMPLETED
+  CLOSED
+}
+
+enum HiringStatus {
+  URGENT
+  NORMAL
+}
+
+enum JobEmployeeStatus {
+  APPLIED
+  HIRED
+  REJECTED
+  CANCELLED
 }

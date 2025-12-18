@@ -65,7 +65,7 @@ export class AuthService {
             create: {
               firstName,
               lastName,
-              role: 'USER',
+              role: 'EMPLOYEE',
             },
           },
         },
@@ -100,7 +100,9 @@ export class AuthService {
     const tokens = await this.generateTokensForLogin({
       id: user.id,
       email,
-      profile: user.profile,
+      profile: {
+        role: user.profile?.role.toString(),
+      },
     });
 
     // Return only the access token
@@ -234,7 +236,7 @@ export class AuthService {
               firstName,
               lastName,
               pictureUrl: profileImage,
-              role: 'USER',
+              role: 'EMPLOYEE',
             },
           },
         },
@@ -768,7 +770,7 @@ export class AuthService {
                 firstName,
                 lastName,
                 pictureUrl: profileImage,
-                role: 'USER',
+                role: 'EMPLOYEE',
               },
               update: {
                 firstName,
@@ -806,7 +808,7 @@ export class AuthService {
               firstName,
               lastName,
               pictureUrl: profileImage,
-              role: 'USER',
+              role: 'EMPLOYEE',
             },
           },
         },
