@@ -6,6 +6,12 @@ export const JobType = {
 } as const;
 export type JobType = (typeof JobType)[keyof typeof JobType];
 
+export const WorkMode = {
+  ONSITE: 'ONSITE',
+  REMOTE: 'REMOTE',
+} as const;
+export type WorkMode = (typeof WorkMode)[keyof typeof WorkMode];
+
 export const WageRate = {
   HOUR: 'HOUR',
   WEEKLY: 'WEEKLY',

@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 import {
   JobType,
+  WorkMode,
   WageRate,
   JobStatus,
   HiringStatus,
@@ -41,6 +42,11 @@ export class CreateJobDto {
   @IsEnum(JobType)
   @IsOptional()
   jobType?: JobType;
+
+  @ApiPropertyOptional({ enum: WorkMode })
+  @IsEnum(WorkMode)
+  @IsOptional()
+  workMode?: WorkMode;
 
   @ApiPropertyOptional({ description: 'Offered wage' })
   @IsNumber()

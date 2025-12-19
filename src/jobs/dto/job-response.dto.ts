@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   JobType,
+  WorkMode,
   WageRate,
   JobStatus,
   HiringStatus,
@@ -24,6 +25,9 @@ export class JobResponseDto {
 
   @ApiPropertyOptional({ enum: JobType })
   jobType?: JobType | null;
+
+  @ApiPropertyOptional({ enum: WorkMode })
+  workMode?: WorkMode | null;
 
   @ApiPropertyOptional({ type: 'number' })
   wage?: number | null;

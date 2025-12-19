@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import {
   ApiCreatedResponse,
@@ -69,5 +70,34 @@ export class CompaniesController {
   @Roles(UserRole.EMPLOYER)
   remove(@Param('id') id: string) {
     return this.companiesService.remove(id);
+  }
+
+  @Post(':id/follow')
+  @ApiOperation({ summary: 'Follow a company (EMPLOYEE only)' })
+  @ApiOkResponse({ description: 'Company followed' })
+  @Roles(UserRole.EMPLOYEE)
+  follow(@Param('id') companyId: string, @Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.companiesService.follow(companyId, employeeId);
+  }
+
+  @Delete(':id/follow')
+  @ApiOperation({ summary: 'Unfollow a company (EMPLOYEE only)' })
+  @ApiOkResponse({ description: 'Company unfollowed' })
+  @Roles(UserRole.EMPLOYEE)
+  unfollow(@Param('id') companyId: string, @Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.companiesService.unfollow(companyId, employeeId);
+  }
+
+  @Get('followedIds')
+  @ApiOperation({
+    summary: 'Get followed company IDs for the authenticated employee',
+  })
+  @ApiOkResponse({ type: String, isArray: true })
+  @Roles(UserRole.EMPLOYEE)
+  followedCompanyIds(@Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.companiesService.getFollowedCompanyIds(employeeId);
   }
 }

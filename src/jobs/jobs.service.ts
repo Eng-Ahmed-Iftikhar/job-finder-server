@@ -20,6 +20,7 @@ export class JobsService {
         locationId: dto.locationId ?? null,
         description: dto.description,
         jobType: dto.jobType ?? null,
+        workMode: dto.workMode ?? null,
         wage: dto.wage ?? null,
         wageRate: dto.wageRate ?? null,
         currency: dto.currency ?? null,
@@ -54,24 +55,6 @@ export class JobsService {
       where: { id },
       include: {
         location: true,
-        employers: { include: { employer: true } },
-      },
-    });
-    if (!job) throw new NotFoundException('Job not found');
-    return job;
-  }
-
-  findSuggested(employeeId: string, page: number, limit: number) {
-    const take = Math.max(1, limit);
-    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
-
-    return this.prisma.job.findMany({
-      where: {
-        status: JobStatus.PUBLISHED,
-        employees: { none: { employeeId } },
-      },
-      include: {
-        location: true,
         employers: {
           include: {
             employer: {
@@ -84,10 +67,45 @@ export class JobsService {
           },
         },
       },
-      orderBy: [{ publishAt: 'desc' }, { createdAt: 'desc' }],
-      skip,
-      take,
     });
+    if (!job) throw new NotFoundException('Job not found');
+    return job;
+  }
+
+  async findSuggested(employeeId: string, page: number, limit: number) {
+    const take = Math.max(1, limit);
+    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
+
+    const where = {
+      status: JobStatus.PUBLISHED,
+      employees: { none: { employeeId } },
+    } as const;
+
+    const [data, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where,
+        include: {
+          location: true,
+          employers: {
+            include: {
+              employer: {
+                include: {
+                  companyProfiles: {
+                    include: { company: true, location: true, website: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ publishAt: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.job.count({ where }),
+    ]);
+
+    return { data, total, page, pageSize: take };
   }
 
   async update(id: string, dto: UpdateJobDto) {
@@ -146,6 +164,95 @@ export class JobsService {
     if (existing) throw new ConflictException('Already saved this job');
 
     return this.prisma.savedJob.create({ data: { jobId, employeeId } });
+  }
+
+  async unsave(jobId: string, employeeId: string) {
+    const existing = await this.prisma.savedJob.findUnique({
+      where: { jobId_employeeId: { jobId, employeeId } },
+    });
+
+    if (!existing) throw new NotFoundException('Saved job not found');
+
+    return this.prisma.savedJob.delete({
+      where: { jobId_employeeId: { jobId, employeeId } },
+    });
+  }
+
+  async listSavedIds(employeeId: string) {
+    console.log({ employeeId });
+
+    const saved = await this.prisma.savedJob.findMany({
+      where: { employeeId },
+      select: { jobId: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return saved.map((s) => s.jobId);
+  }
+
+  async findSaved(employeeId: string, page: number, limit: number) {
+    const take = Math.max(1, limit);
+    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
+
+    const where = { savedBy: { some: { employeeId } } } as const;
+
+    const [data, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where,
+        include: {
+          location: true,
+          employers: {
+            include: {
+              employer: {
+                include: {
+                  companyProfiles: {
+                    include: { company: true, location: true, website: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ publishAt: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.job.count({ where }),
+    ]);
+
+    return { data, total, page, pageSize: take };
+  }
+
+  async findApplied(employeeId: string, page: number, limit: number) {
+    const take = Math.max(1, limit);
+    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
+
+    const where = { employees: { some: { employeeId } } } as const;
+
+    const [data, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where,
+        include: {
+          location: true,
+          employers: {
+            include: {
+              employer: {
+                include: {
+                  companyProfiles: {
+                    include: { company: true, location: true, website: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ publishAt: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.job.count({ where }),
+    ]);
+
+    return { data, total, page, pageSize: take };
   }
 
   private async ensureExists(id: string) {

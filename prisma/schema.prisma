@@ -303,6 +303,7 @@ model Job {
   locationId  String?
   description String?
   jobType     JobType?
+  workMode    WorkMode?
   wage        Decimal?
   wageRate    WageRate?
   currency    String?
@@ -480,6 +481,11 @@ enum JobType {
   PART_TIME
   CONTRACT
   INTERNSHIP
+}
+
+enum WorkMode {
+  ONSITE
+  REMOTE
 }
 
 enum WageRate {

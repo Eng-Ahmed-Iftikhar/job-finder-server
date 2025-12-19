@@ -56,15 +56,90 @@ export class JobsController {
   @ApiOperation({
     summary: 'List suggested jobs for the authenticated employee',
   })
-  @ApiOkResponse({ type: JobResponseDto, isArray: true })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/JobResponseDto' },
+        },
+        total: { type: 'number' },
+        page: { type: 'number' },
+        pageSize: { type: 'number' },
+      },
+    },
+  })
   @Roles(UserRole.EMPLOYEE)
   suggested(
     @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
   ) {
     const employeeId = req.user?.id as string;
-    return this.service.findSuggested(employeeId, page, limit);
+    return this.service.findSuggested(employeeId, page, pageSize);
+  }
+  @Get('savedIds')
+  @ApiOperation({
+    summary: 'List saved job ids for the authenticated employee',
+  })
+  @ApiOkResponse({ type: String, isArray: true })
+  @Roles(UserRole.EMPLOYEE)
+  listSaved(@Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.service.listSavedIds(employeeId);
+  }
+
+  @Get('saved')
+  @ApiOperation({ summary: 'List saved jobs for the authenticated employee' })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/JobResponseDto' },
+        },
+        total: { type: 'number' },
+        page: { type: 'number' },
+        pageSize: { type: 'number' },
+      },
+    },
+  })
+  @Roles(UserRole.EMPLOYEE)
+  listSavedDetailed(
+    @Request() req: any,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+  ) {
+    const employeeId = req.user?.id as string;
+    return this.service.findSaved(employeeId, page, pageSize);
+  }
+
+  @Get('applied')
+  @ApiOperation({ summary: 'List applied jobs for the authenticated employee' })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/JobResponseDto' },
+        },
+        total: { type: 'number' },
+        page: { type: 'number' },
+        pageSize: { type: 'number' },
+      },
+    },
+  })
+  @Roles(UserRole.EMPLOYEE)
+  listApplied(
+    @Request() req: any,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+  ) {
+    const employeeId = req.user?.id as string;
+    return this.service.findApplied(employeeId, page, pageSize);
   }
 
   @Get(':id')
@@ -107,5 +182,14 @@ export class JobsController {
   save(@Param('id') jobId: string, @Request() req: any) {
     const employeeId = req.user?.id as string;
     return this.service.save(jobId, employeeId);
+  }
+
+  @Delete(':id/save')
+  @ApiOperation({ summary: 'Unsave a job (EMPLOYEE only)' })
+  @ApiOkResponse({ description: 'Job unsaved' })
+  @Roles(UserRole.EMPLOYEE)
+  unsave(@Param('id') jobId: string, @Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.service.unsave(jobId, employeeId);
   }
 }
