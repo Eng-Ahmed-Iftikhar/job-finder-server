@@ -12,6 +12,8 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  DefaultValuePipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
@@ -69,15 +71,18 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(UserRole.OWNER)
-  @ApiOperation({ summary: 'Get all users (Admin only)' })
+  @Roles(UserRole.OWNER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: 'Get all users (Owner and Employee only)' })
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
   @ApiResponse({
     status: 403,
-    description: 'Forbidden - Admin access required',
+    description: 'Forbidden - Owner or Employee access required',
   })
-  async findAllUsers() {
-    return this.usersService.findAllUsers();
+  async findAllUsers(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+  ) {
+    return this.usersService.findAllUsers(page, pageSize);
   }
 
   @Get('stats')

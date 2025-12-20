@@ -110,13 +110,30 @@ export class UsersService {
     }
     return user;
   }
-  async findAllUsers() {
-    return this.prisma.user.findMany({
-      include: {
-        email: true,
-        profile: true,
-      },
-    });
+
+  async findAllUsers(page: number = 1, limit: number = 10) {
+    const take = Math.max(1, limit);
+    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        include: {
+          email: true,
+          profile: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.user.count(),
+    ]);
+
+    return {
+      data: users,
+      total,
+      page: Math.max(1, page),
+      pageSize: take,
+    };
   }
 
   async getCurrentUser(userId: string): Promise<UserWithProfileResponseDto> {
@@ -196,11 +213,35 @@ export class UsersService {
       };
     });
 
-    const followedCompanyIds = await this.prisma.companyFollower.findMany({
+    const followedCompanies = await this.prisma.companyFollower.findMany({
       where: { followerId: userId },
-      select: { companyId: true },
+      include: {
+        company: {
+          include: {
+            profile: {
+              include: {
+                location: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
+
+    const followedCompaniesSummaries = followedCompanies.map((fc) => ({
+      id: fc.company.id,
+      name: fc.company.name,
+      address: fc.company.profile?.address ?? null,
+      pictureUrl: fc.company.profile?.pictureUrl ?? null,
+      location: fc.company.profile?.location
+        ? {
+            city: fc.company.profile.location.city,
+            state: fc.company.profile.location.state,
+            country: fc.company.profile.location.country,
+          }
+        : null,
+    }));
 
     const savedJobIds = await this.prisma.savedJob.findMany({
       where: { employeeId: userId },
@@ -224,7 +265,7 @@ export class UsersService {
       },
       profile: userProfile as never,
       connections: connectionSummaries,
-      followedCompanyIds: followedCompanyIds.map((f) => f.companyId),
+      followedCompanies: followedCompaniesSummaries,
       savedJobIds: savedJobIds.map((s) => s.jobId),
       appliedJobIds: appliedJobIds.map((a) => a.jobId),
     };

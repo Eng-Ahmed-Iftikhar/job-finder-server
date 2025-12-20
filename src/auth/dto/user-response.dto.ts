@@ -121,6 +121,46 @@ export class ConnectionSummaryResponseDto {
   })
   user: ConnectionUserResponseDto;
 }
+export class FollowedCompanyLocationResponseDto {
+  @ApiProperty({ description: 'City', required: false, nullable: true })
+  city?: string | null;
+
+  @ApiProperty({ description: 'State', required: false, nullable: true })
+  state?: string | null;
+
+  @ApiProperty({ description: 'Country', required: false, nullable: true })
+  country?: string | null;
+}
+
+export class FollowedCompanySummaryResponseDto {
+  @ApiProperty({ description: 'Company ID' })
+  id: string;
+
+  @ApiProperty({ description: 'Company name' })
+  name: string;
+
+  @ApiProperty({
+    description: 'Company address',
+    required: false,
+    nullable: true,
+  })
+  address?: string | null;
+
+  @ApiProperty({
+    description: 'Company picture URL',
+    required: false,
+    nullable: true,
+  })
+  pictureUrl?: string | null;
+
+  @ApiProperty({
+    description: 'Company location',
+    type: FollowedCompanyLocationResponseDto,
+    required: false,
+    nullable: true,
+  })
+  location?: FollowedCompanyLocationResponseDto | null;
+}
 export class UserEmailResponseDto {
   @ApiProperty({ description: 'Email ID' })
   id: string;
@@ -182,12 +222,12 @@ export class UserWithProfileResponseDto {
   connections?: ConnectionSummaryResponseDto[];
 
   @ApiProperty({
-    description: 'Company IDs the user follows',
-    type: String,
+    description: 'Companies the user follows',
+    type: FollowedCompanySummaryResponseDto,
     isArray: true,
     required: false,
   })
-  followedCompanyIds?: string[];
+  followedCompanies?: FollowedCompanySummaryResponseDto[];
 
   @ApiProperty({
     description: 'Job IDs the user saved',
