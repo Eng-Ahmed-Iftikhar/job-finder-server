@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -31,6 +32,15 @@ import { UserRole } from '../types/user.types';
 export class ConnectionsController {
   constructor(private readonly connectionsService: ConnectionsService) {}
 
+  @Post('connect/:userId')
+  @ApiOperation({ summary: 'Create a connection with a user' })
+  @ApiCreatedResponse({ type: ConnectionResponseDto })
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  connectWithUser(@Param('userId') targetUserId: string, @Request() req: any) {
+    const currentUserId = req.user?.id as string;
+    return this.connectionsService.connectWithUser(currentUserId, targetUserId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a connection' })
   @ApiCreatedResponse({ type: ConnectionResponseDto })
@@ -45,6 +55,35 @@ export class ConnectionsController {
   @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
   findAll() {
     return this.connectionsService.findAll();
+  }
+
+  @Get('me')
+  @ApiOperation({ summary: 'List my connections (other users)' })
+  @ApiOkResponse({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          connectionId: { type: 'string' },
+          user: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              firstName: { type: 'string', nullable: true },
+              lastName: { type: 'string', nullable: true },
+              pictureUrl: { type: 'string', nullable: true },
+              role: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  listMine(@Request() req: any) {
+    const userId = req.user?.id as string;
+    return this.connectionsService.listMine(userId);
   }
 
   @Get(':id')

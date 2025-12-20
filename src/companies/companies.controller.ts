@@ -8,6 +8,9 @@ import {
   Post,
   UseGuards,
   Request,
+  Query,
+  DefaultValuePipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 import {
   ApiCreatedResponse,
@@ -48,10 +51,21 @@ export class CompaniesController {
     return this.companiesService.findAll();
   }
 
+  @Get('followedIds')
+  @ApiOperation({
+    summary: 'Get followed company IDs for the authenticated employee',
+  })
+  @ApiOkResponse({ type: String, isArray: true })
+  @Roles(UserRole.EMPLOYEE)
+  followedCompanyIds(@Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.companiesService.getFollowedCompanyIds(employeeId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a company by id' })
   @ApiOkResponse({ type: CompanyResponseDto })
-  @Roles(UserRole.EMPLOYER)
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
   findOne(@Param('id') id: string) {
     return this.companiesService.findOne(id);
   }
@@ -90,14 +104,28 @@ export class CompaniesController {
     return this.companiesService.unfollow(companyId, employeeId);
   }
 
-  @Get('followedIds')
-  @ApiOperation({
-    summary: 'Get followed company IDs for the authenticated employee',
+  @Get(':id/jobs')
+  @ApiOperation({ summary: 'Get all jobs for a company with pagination' })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          description: 'Job listings for the company',
+        },
+        total: { type: 'number', description: 'Total number of jobs' },
+        page: { type: 'number', description: 'Current page' },
+        pageSize: { type: 'number', description: 'Items per page' },
+      },
+    },
   })
-  @ApiOkResponse({ type: String, isArray: true })
-  @Roles(UserRole.EMPLOYEE)
-  followedCompanyIds(@Request() req: any) {
-    const employeeId = req.user?.id as string;
-    return this.companiesService.getFollowedCompanyIds(employeeId);
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  getCompanyJobs(
+    @Param('id') companyId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+  ) {
+    return this.companiesService.getCompanyJobs(companyId, page, pageSize);
   }
 }

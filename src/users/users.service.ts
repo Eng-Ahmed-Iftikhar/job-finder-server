@@ -170,7 +170,49 @@ export class UsersService {
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };
-    console.log({ userProfile });
+
+    const connections = await this.prisma.connection.findMany({
+      where: {
+        OR: [{ employeeId: userId }, { employerId: userId }],
+      },
+      include: {
+        employee: { include: { profile: true } },
+        employer: { include: { profile: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const connectionSummaries = connections.map((c) => {
+      const other = c.employeeId === userId ? c.employer : c.employee;
+      return {
+        id: c.id,
+        user: {
+          id: other?.id ?? '',
+          firstName: other?.profile?.firstName ?? null,
+          lastName: other?.profile?.lastName ?? null,
+          pictureUrl: other?.profile?.pictureUrl ?? null,
+          role: other?.profile?.role ?? null,
+        },
+      };
+    });
+
+    const followedCompanyIds = await this.prisma.companyFollower.findMany({
+      where: { followerId: userId },
+      select: { companyId: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const savedJobIds = await this.prisma.savedJob.findMany({
+      where: { employeeId: userId },
+      select: { jobId: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const appliedJobIds = await this.prisma.jobEmployee.findMany({
+      where: { employeeId: userId },
+      select: { jobId: true },
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
       user: {
@@ -181,6 +223,10 @@ export class UsersService {
         updatedAt: user.updatedAt,
       },
       profile: userProfile as never,
+      connections: connectionSummaries,
+      followedCompanyIds: followedCompanyIds.map((f) => f.companyId),
+      savedJobIds: savedJobIds.map((s) => s.jobId),
+      appliedJobIds: appliedJobIds.map((a) => a.jobId),
     };
   }
 
@@ -485,6 +531,10 @@ export class UsersService {
     const profile = await this.prisma.profile.update({
       where: { userId },
       data: { ...updateData, ...(locationId && { locationId }) },
+      include: {
+        phoneNumbers: { include: { phoneNumber: true } },
+        location: true,
+      },
     });
 
     return profile;

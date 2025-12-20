@@ -23,6 +23,7 @@ import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { JobResponseDto } from './dto/job-response.dto';
+import { ApplyJobDto } from './dto/apply-job.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -76,8 +77,7 @@ export class JobsController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
   ) {
-    const employeeId = req.user?.id as string;
-    return this.service.findSuggested(employeeId, page, pageSize);
+    return this.service.findSuggested(page, pageSize);
   }
   @Get('savedIds')
   @ApiOperation({
@@ -88,6 +88,17 @@ export class JobsController {
   listSaved(@Request() req: any) {
     const employeeId = req.user?.id as string;
     return this.service.listSavedIds(employeeId);
+  }
+
+  @Get('appliedIds')
+  @ApiOperation({
+    summary: 'List applied job ids for the authenticated employee',
+  })
+  @ApiOkResponse({ type: String, isArray: true })
+  @Roles(UserRole.EMPLOYEE)
+  listAppliedIds(@Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.service.listAppliedIds(employeeId);
   }
 
   @Get('saved')
@@ -170,9 +181,13 @@ export class JobsController {
   @ApiOperation({ summary: 'Apply to a job (EMPLOYEE only)' })
   @ApiOkResponse({ description: 'Application created' })
   @Roles(UserRole.EMPLOYEE)
-  apply(@Param('id') jobId: string, @Request() req: any) {
+  apply(
+    @Param('id') jobId: string,
+    @Body() dto: ApplyJobDto,
+    @Request() req: any,
+  ) {
     const employeeId = req.user?.id as string;
-    return this.service.apply(jobId, employeeId);
+    return this.service.apply(jobId, employeeId, dto.coverLetter);
   }
 
   @Post(':id/save')

@@ -20,7 +20,15 @@ export class CompaniesService {
   }
 
   async findOne(id: string) {
-    const company = await this.prisma.company.findUnique({ where: { id } });
+    const company = await this.prisma.company.findUnique({
+      where: { id },
+      include: {
+        profile: {
+          include: { location: true, employer: true, website: true },
+        },
+        followers: true,
+      },
+    });
     if (!company) throw new NotFoundException('Company not found');
     return company;
   }
@@ -84,6 +92,75 @@ export class CompaniesService {
       orderBy: { createdAt: 'desc' },
     });
     return followed.map((f) => f.companyId);
+  }
+
+  async getCompanyJobs(
+    companyId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    await this.ensureExists(companyId);
+
+    const take = Math.max(1, limit);
+    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
+
+    const [jobs, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where: {
+          employers: {
+            some: {
+              employer: {
+                companyProfiles: {
+                  some: {
+                    companyId,
+                  },
+                },
+              },
+            },
+          },
+        },
+        include: {
+          location: true,
+          employers: {
+            include: {
+              employer: {
+                include: {
+                  companyProfiles: {
+                    include: { company: true, location: true, website: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.job.count({
+        where: {
+          employers: {
+            some: {
+              employer: {
+                companyProfiles: {
+                  some: {
+                    companyId,
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+    console.log({ jobs });
+
+    return {
+      data: jobs,
+      total,
+      page: Math.max(1, page),
+      pageSize: take,
+    };
   }
 
   private async ensureExists(id: string) {

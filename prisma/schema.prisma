@@ -16,17 +16,17 @@ datasource db {
 // User model for authentication
 model User {
   id              String    @id @default(cuid())
-  password        String?   // Made optional for social login users
-  isActive        Boolean   @default(true)
+  password        String?
+  isActive        Boolean   @default(true) @map("is_active")
   
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   // Relations
-  verificationCodes VerificationCode[]
+  verificationCodes VerificationCode[] @relation("UserVerificationCodes")
   profile         Profile?
-  emailId         String? @unique
+  emailId         String? @unique @map("email_id")
   email           Email?    @relation(fields: [emailId], references: [id], onDelete: SetNull)
   companyProfiles CompanyProfile[]
   sentConnectionRequests ConnectionRequest[] @relation("SenderRequests")
@@ -45,12 +45,12 @@ model User {
 model Email {
   id        String   @id @default(cuid())
   email     String   @unique
-  isVerified Boolean  @default(false)
+  isVerified Boolean  @default(false) @map("is_verified")
   // Social login fields
   provider  SocialProvider?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relations
   user User?
@@ -60,17 +60,17 @@ model Email {
 // Verification codes table
 model VerificationCode {
   id        String              @id @default(cuid())
-  userId    String
+  userId    String              @map("user_id")
   code      String
   type      VerificationCodeType
-  expiresAt DateTime
-  isUsed    Boolean             @default(false)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
-  deletedAt DateTime?
+  expiresAt DateTime            @map("expires_at")
+  isUsed    Boolean             @default(false) @map("is_used")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+  deletedAt DateTime?           @map("deleted_at")
 
   // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("UserVerificationCodes", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("verification_codes")
 }
@@ -78,19 +78,19 @@ model VerificationCode {
 // Profile model for user details
 model Profile {
   id              String   @id @default(cuid())
-  userId          String   @unique
-  firstName       String?
-  lastName        String?
-  isOnboarded     Boolean  @default(false)
+  userId          String   @unique @map("user_id")
+  firstName       String?  @map("first_name")
+  lastName        String?  @map("last_name")
+  isOnboarded     Boolean  @default(false) @map("is_onboarded")
   role            UserRole @default(EMPLOYEE)
-  locationId      String?
+  locationId      String?  @map("location_id")
   address         String?
-  pictureUrl      String?
-  bio             String? // profile bio
-  resumeUrl       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
+  pictureUrl      String?  @map("picture_url")
+  bio             String?
+  resumeUrl       String?  @map("resume_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -107,15 +107,15 @@ model Profile {
 // Experience model
 model Experience {
   id          String   @id @default(cuid())
-  profileId   String
+  profileId   String   @map("profile_id")
   position    String
   company     String
-  startDate   DateTime
-  endDate     DateTime?
-  isCurrent   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  startDate   DateTime @map("start_date")
+  endDate     DateTime? @map("end_date")
+  isCurrent   Boolean  @default(false) @map("is_current")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -126,16 +126,16 @@ model Experience {
 // Education model
 model Education {
   id            String   @id @default(cuid())
-  profileId     String
+  profileId     String   @map("profile_id")
   school        String
   degree        String
-  fieldOfStudy  String?
-  yearStarted   Int
-  yearGraduated Int?
-  inProgress    Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  fieldOfStudy  String?  @map("field_of_study")
+  yearStarted   Int      @map("year_started")
+  yearGraduated Int?     @map("year_graduated")
+  inProgress    Boolean  @default(false) @map("in_progress")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -147,9 +147,9 @@ model Education {
 model Skill {
   id        String   @id @default(cuid())
   name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relations
   profileSkills ProfileSkill[]
@@ -160,10 +160,10 @@ model Skill {
 // Profile-Skill join table (many-to-many)
 model ProfileSkill {
   id        String   @id @default(cuid())
-  profileId String
-  skillId   String
-  createdAt DateTime @default(now())
-  deletedAt DateTime?
+  profileId String   @map("profile_id")
+  skillId   String   @map("skill_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -176,12 +176,12 @@ model ProfileSkill {
 // Phone numbers directory (no direct link to Profile)
 model PhoneNumber {
   id          String   @id @default(cuid())
-  countryCode String
+  countryCode String   @map("country_code")
   number      String
-  isVerified  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  isVerified  Boolean  @default(false) @map("is_verified")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   // Relations
   userPhoneNumbers UserPhoneNumber[]
@@ -192,11 +192,11 @@ model PhoneNumber {
 // Join table linking Profile to PhoneNumber
 model UserPhoneNumber {
   id            String      @id @default(cuid())
-  profileId     String
-  phoneNumberId String
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  deletedAt     DateTime?
+  profileId     String      @map("profile_id")
+  phoneNumberId String      @map("phone_number_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deletedAt     DateTime?   @map("deleted_at")
 
   // Relations
   profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -213,9 +213,9 @@ model Location {
   state     String?
   country   String?
   status    LocationStatus  @default(ENABLE)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  deletedAt DateTime?
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  deletedAt DateTime?       @map("deleted_at")
 
   // Relations
   profiles Profile[]
@@ -229,9 +229,9 @@ model Location {
 model Company {
   id        String   @id @default(cuid())
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relations
   profile CompanyProfile?
@@ -243,11 +243,11 @@ model Company {
 // Company followers (user follows company)
 model CompanyFollower {
   id         String   @id @default(cuid())
-  companyId  String
-  followerId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  companyId  String   @map("company_id")
+  followerId String   @map("follower_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   follower User    @relation(fields: [followerId], references: [id], onDelete: Cascade)
@@ -259,17 +259,17 @@ model CompanyFollower {
 // Company profile model
 model CompanyProfile {
   id         String   @id @default(cuid())
-  employerId String
-  companyId  String   @unique
-  locationId String?
+  employerId String   @map("employer_id")
+  companyId  String   @unique @map("company_id")
+  locationId String?  @map("location_id")
   address    String?
   status     CompanyStatus @default(ENABLE)
-  websiteId  String?
-  pictureUrl String?
+  websiteId  String?  @map("website_id")
+  pictureUrl String?  @map("picture_url")
   about      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   // Relations
   employer User     @relation(fields: [employerId], references: [id], onDelete: Cascade)
@@ -285,9 +285,9 @@ model Website {
   id        String   @id @default(cuid())
   url       String   @unique
   name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relations
   companyProfiles CompanyProfile[]
@@ -300,19 +300,19 @@ model Job {
   id          String     @id @default(cuid())
   name        String
   address     String?
-  locationId  String?
+  locationId  String?    @map("location_id")
   description String?
-  jobType     JobType?
-  workMode    WorkMode?
+  jobType     JobType?   @map("job_type")
+  workMode    WorkMode?  @map("work_mode")
   wage        Decimal?
-  wageRate    WageRate?
+  wageRate    WageRate?  @map("wage_rate")
   currency    String?
-  hiringStatus HiringStatus @default(NORMAL)
+  hiringStatus HiringStatus @default(NORMAL) @map("hiring_status")
   status      JobStatus  @default(DRAFT)
-  publishAt   DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  deletedAt   DateTime?
+  publishAt   DateTime?  @map("publish_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
 
   // Relations
   location     Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
@@ -326,11 +326,11 @@ model Job {
 // Saved jobs (employee bookmarks a job)
 model SavedJob {
   id          String   @id @default(cuid())
-  jobId       String
-  employeeId  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  jobId       String   @map("job_id")
+  employeeId  String   @map("employee_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   // Relations
   job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -343,11 +343,11 @@ model SavedJob {
 // Join table linking Job to Employer (User)
 model JobEmployer {
   id         String   @id @default(cuid())
-  jobId      String
-  employerId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  jobId      String   @map("job_id")
+  employerId String   @map("employer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   // Relations
   job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -360,13 +360,14 @@ model JobEmployer {
 // Join table linking Job to Employee (User)
 model JobEmployee {
   id          String              @id @default(cuid())
-  jobId       String
-  employeeId  String
+  jobId       String              @map("job_id")
+  employeeId  String              @map("employee_id")
   status      JobEmployeeStatus   @default(APPLIED)
-  hiredAt     DateTime?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  deletedAt   DateTime?
+  coverLetter String?             @map("cover_letter")
+  hiredAt     DateTime?           @map("hired_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  deletedAt   DateTime?           @map("deleted_at")
 
   // Relations
   job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -379,27 +380,27 @@ model JobEmployee {
 // Notification settings for user preferences
 model NotificationSetting {
   id                                      String   @id @default(cuid())
-  profileId                               String   @unique
+  profileId                               String   @unique @map("profile_id")
   
   // Interview notifications
-  jobInterviewScheduledSystem              Boolean  @default(true)
-  jobInterviewScheduledEmail               Boolean  @default(true)
+  jobInterviewScheduledSystem              Boolean  @default(true) @map("job_interview_scheduled_system")
+  jobInterviewScheduledEmail               Boolean  @default(true) @map("job_interview_scheduled_email")
   
   // Connection request notifications
-  connectionRequestSystem                  Boolean  @default(true)
-  connectionRequestEmail                   Boolean  @default(true)
+  connectionRequestSystem                  Boolean  @default(true) @map("connection_request_system")
+  connectionRequestEmail                   Boolean  @default(true) @map("connection_request_email")
   
   // Job opening notifications
-  newJobOpeningSystem                      Boolean  @default(true)
-  newJobOpeningEmail                       Boolean  @default(true)
+  newJobOpeningSystem                      Boolean  @default(true) @map("new_job_opening_system")
+  newJobOpeningEmail                       Boolean  @default(true) @map("new_job_opening_email")
   
   // Interview reminder notifications
-  interviewReminderSystem                  Boolean  @default(false)
-  interviewReminderEmail                   Boolean  @default(true)
+  interviewReminderSystem                  Boolean  @default(false) @map("interview_reminder_system")
+  interviewReminderEmail                   Boolean  @default(true) @map("interview_reminder_email")
   
-  createdAt                                DateTime @default(now())
-  updatedAt                                DateTime @updatedAt
-  deletedAt                                DateTime?
+  createdAt                                DateTime @default(now()) @map("created_at")
+  updatedAt                                DateTime @updatedAt @map("updated_at")
+  deletedAt                                DateTime? @map("deleted_at")
 
   // Relations
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -410,11 +411,11 @@ model NotificationSetting {
 // Connection table between employee and employer
 model Connection {
   id         String   @id @default(cuid())
-  employeeId String
-  employerId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  employeeId String   @map("employee_id")
+  employerId String   @map("employer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   employee User @relation("EmployeeConnections", fields: [employeeId], references: [id], onDelete: Cascade)
   employer User @relation("EmployerConnections", fields: [employerId], references: [id], onDelete: Cascade)
@@ -426,12 +427,12 @@ model Connection {
 // Connection requests
 model ConnectionRequest {
   id         String   @id @default(cuid())
-  senderId   String
-  receiverId String
+  senderId   String   @map("sender_id")
+  receiverId String   @map("receiver_id")
   status     ConnectionRequestStatus @default(PENDING)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   sender   User @relation("SenderRequests", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User @relation("ReceiverRequests", fields: [receiverId], references: [id], onDelete: Cascade)

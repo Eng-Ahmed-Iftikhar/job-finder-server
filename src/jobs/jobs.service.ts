@@ -72,13 +72,12 @@ export class JobsService {
     return job;
   }
 
-  async findSuggested(employeeId: string, page: number, limit: number) {
+  async findSuggested(page: number, limit: number) {
     const take = Math.max(1, limit);
     const skip = Math.max(0, (Math.max(1, page) - 1) * take);
 
     const where = {
       status: JobStatus.PUBLISHED,
-      employees: { none: { employeeId } },
     } as const;
 
     const [data, total] = await Promise.all([
@@ -125,7 +124,7 @@ export class JobsService {
     return this.prisma.job.delete({ where: { id } });
   }
 
-  async apply(jobId: string, employeeId: string) {
+  async apply(jobId: string, employeeId: string, coverLetter?: string) {
     const job = await this.prisma.job.findUnique({ where: { id: jobId } });
     if (!job) throw new NotFoundException('Job not found');
 
@@ -144,7 +143,7 @@ export class JobsService {
     if (existing) throw new ConflictException('Already applied to this job');
 
     return this.prisma.jobEmployee.create({
-      data: { jobId, employeeId },
+      data: { jobId, employeeId, coverLetter },
     });
   }
 
@@ -187,6 +186,15 @@ export class JobsService {
       orderBy: { createdAt: 'desc' },
     });
     return saved.map((s) => s.jobId);
+  }
+
+  async listAppliedIds(employeeId: string) {
+    const applied = await this.prisma.jobEmployee.findMany({
+      where: { employeeId },
+      select: { jobId: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return applied.map((a) => a.jobId);
   }
 
   async findSaved(employeeId: string, page: number, limit: number) {

@@ -89,6 +89,38 @@ export class ProfileResponseDto {
   @ApiProperty({ description: 'Profile last update date' })
   updatedAt: Date;
 }
+
+export class ConnectionUserResponseDto {
+  @ApiProperty({ description: 'User ID' })
+  id: string;
+
+  @ApiProperty({ description: 'First name', required: false, nullable: true })
+  firstName?: string | null;
+
+  @ApiProperty({ description: 'Last name', required: false, nullable: true })
+  lastName?: string | null;
+
+  @ApiProperty({
+    description: 'Profile picture URL',
+    required: false,
+    nullable: true,
+  })
+  pictureUrl?: string | null;
+
+  @ApiProperty({ description: 'User role', required: false, nullable: true })
+  role?: string | null;
+}
+
+export class ConnectionSummaryResponseDto {
+  @ApiProperty({ description: 'Connection ID' })
+  id: string;
+
+  @ApiProperty({
+    description: 'The other user in the connection',
+    type: ConnectionUserResponseDto,
+  })
+  user: ConnectionUserResponseDto;
+}
 export class UserEmailResponseDto {
   @ApiProperty({ description: 'Email ID' })
   id: string;
@@ -140,4 +172,36 @@ export class UserWithProfileResponseDto {
     required: false,
   })
   profile?: ProfileResponseDto;
+
+  @ApiProperty({
+    description: 'Connections for this user',
+    type: ConnectionSummaryResponseDto,
+    isArray: true,
+    required: false,
+  })
+  connections?: ConnectionSummaryResponseDto[];
+
+  @ApiProperty({
+    description: 'Company IDs the user follows',
+    type: String,
+    isArray: true,
+    required: false,
+  })
+  followedCompanyIds?: string[];
+
+  @ApiProperty({
+    description: 'Job IDs the user saved',
+    type: String,
+    isArray: true,
+    required: false,
+  })
+  savedJobIds?: string[];
+
+  @ApiProperty({
+    description: 'Job IDs the user applied to',
+    type: String,
+    isArray: true,
+    required: false,
+  })
+  appliedJobIds?: string[];
 }
