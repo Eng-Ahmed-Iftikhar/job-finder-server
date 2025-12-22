@@ -1,4 +1,12 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Query,
+  Req,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
@@ -90,9 +98,10 @@ export class SearchController {
     },
   })
   async search(
+    @Request() req,
     @Query('text') text: string,
     @Query('location') location?: string,
   ) {
-    return this.service.search(text, location);
+    return this.service.search(text, location, req.user.id);
   }
 }

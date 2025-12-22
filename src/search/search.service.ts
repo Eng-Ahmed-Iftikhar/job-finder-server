@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async search(text: string, location: string = '') {
+  async search(text: string, location: string = '', userId: string) {
     // Global location variables
     let city = '',
       state = '',
@@ -27,9 +27,23 @@ export class SearchService {
       state = parts[1];
       country = parts[2];
     }
+
+    locationFilter = {
+      location: {
+        [parts.length === 3 ? 'AND' : 'OR']: [
+          city ? { city: { contains: city, mode: 'insensitive' } } : {},
+          state ? { state: { contains: state, mode: 'insensitive' } } : {},
+          country
+            ? { country: { contains: country, mode: 'insensitive' } }
+            : {},
+        ].filter((f) => Object.keys(f).length > 0),
+      },
+    };
+
     // Search for employees (profiles with role EMPLOYEE)
     const employeeWhere: Record<string, any> = {
       role: 'EMPLOYEE',
+      NOT: { userId },
       OR: [
         { firstName: { contains: text, mode: 'insensitive' as const } },
         { lastName: { contains: text, mode: 'insensitive' as const } },
@@ -53,18 +67,6 @@ export class SearchService {
       }),
       this.prisma.profile.count({ where: employeeWhere }),
     ]);
-
-    locationFilter = {
-      location: {
-        OR: [
-          city ? { city: { contains: city, mode: 'insensitive' } } : {},
-          state ? { state: { contains: state, mode: 'insensitive' } } : {},
-          country
-            ? { country: { contains: country, mode: 'insensitive' } }
-            : {},
-        ].filter((f) => Object.keys(f).length > 0),
-      },
-    };
 
     // Build job where clause
     const jobWhere = {
@@ -91,6 +93,7 @@ export class SearchService {
           address: true,
           wage: true,
           wageRate: true,
+          currency: true,
           location: {
             select: {
               city: true,
@@ -127,21 +130,7 @@ export class SearchService {
       company: {
         OR: [{ name: { contains: text, mode: 'insensitive' } }],
       },
-      ...(location
-        ? {
-            location: {
-              OR: [
-                city ? { city: { contains: city, mode: 'insensitive' } } : {},
-                state
-                  ? { state: { contains: state, mode: 'insensitive' } }
-                  : {},
-                country
-                  ? { country: { contains: country, mode: 'insensitive' } }
-                  : {},
-              ].filter((f) => Object.keys(f).length > 0),
-            },
-          }
-        : {}),
+      ...(location ? locationFilter : {}),
     };
 
     const [companyProfilesData, companyProfilesTotal] = await Promise.all([

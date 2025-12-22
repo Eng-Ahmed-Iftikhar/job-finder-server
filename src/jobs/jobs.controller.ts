@@ -73,11 +73,11 @@ export class JobsController {
   })
   @Roles(UserRole.EMPLOYEE)
   suggested(
-    @Request() req: any,
+    @Query('search') search: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
   ) {
-    return this.service.findSuggested(page, pageSize);
+    return this.service.findSuggested(search, page, pageSize);
   }
   @Get('savedIds')
   @ApiOperation({

@@ -72,13 +72,22 @@ export class JobsService {
     return job;
   }
 
-  async findSuggested(page: number, limit: number) {
+  async findSuggested(search: string, page: number, limit: number) {
     const take = Math.max(1, limit);
     const skip = Math.max(0, (Math.max(1, page) - 1) * take);
 
-    const where = {
-      status: JobStatus.PUBLISHED,
-    } as const;
+    const where: Record<string, any> = {
+      AND: [
+        { status: JobStatus.PUBLISHED },
+        {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            { address: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      ],
+    };
 
     const [data, total] = await Promise.all([
       this.prisma.job.findMany({

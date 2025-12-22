@@ -71,10 +71,16 @@ export class LocationService {
       ) {
         searchResults.push(location.country);
       }
-      if (location.state && searchResults.includes(location.state)) {
+      if (
+        location.state &&
+        q.toLowerCase().includes(location.state.toLowerCase())
+      ) {
         searchResults.push(`${location.state}, ${location.country}`);
       }
-      if (location.city && searchResults.includes(location.city)) {
+      if (
+        location.city &&
+        q.toLowerCase().includes(location.city.toLowerCase())
+      ) {
         searchResults.push(
           `${location.city}, ${location.state}, ${location.country}`,
         );
