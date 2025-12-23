@@ -16,6 +16,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
@@ -44,11 +45,42 @@ export class CompaniesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List companies' })
-  @ApiOkResponse({ type: CompanyResponseDto, isArray: true })
-  @Roles(UserRole.EMPLOYER)
-  findAll() {
-    return this.companiesService.findAll();
+  @ApiOperation({
+    summary: 'List companies with pagination, search, and location filter',
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/CompanyResponseDto' },
+        },
+        total: { type: 'number' },
+        page: { type: 'number' },
+        pageSize: { type: 'number' },
+      },
+    },
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search users by email, first name, or last name',
+  })
+  @ApiQuery({
+    name: 'location',
+    required: false,
+    description: 'Filter users by location (city, state, country)',
+  })
+  @Roles(UserRole.EMPLOYEE)
+  findAll(
+    @Query('search') search?: string,
+    @Query('location') location?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number = 1,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe)
+    pageSize: number = 10,
+  ) {
+    return this.companiesService.findAll({ search, location, page, pageSize });
   }
 
   @Get('followedIds')

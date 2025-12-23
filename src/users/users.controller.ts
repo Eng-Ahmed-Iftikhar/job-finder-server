@@ -73,16 +73,37 @@ export class UsersController {
   @Get()
   @Roles(UserRole.OWNER, UserRole.EMPLOYEE)
   @ApiOperation({ summary: 'Get all users (Owner and Employee only)' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search users by email, first name, or last name',
+  })
+  @ApiQuery({
+    name: 'location',
+    required: false,
+    description: 'Filter users by location (city, state, country)',
+  })
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
   @ApiResponse({
     status: 403,
     description: 'Forbidden - Owner or Employee access required',
   })
   async findAllUsers(
+    @Req() req: Request,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+    @Query('location') location?: string,
+    @Query('search') search?: string,
   ) {
-    return this.usersService.findAllUsers(page, pageSize);
+    return this.usersService.findAllUsers(
+      {
+        search,
+        location,
+        page,
+        limit: pageSize,
+      },
+      req.user!.id,
+    );
   }
 
   @Get('stats')

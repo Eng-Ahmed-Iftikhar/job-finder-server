@@ -222,6 +222,14 @@ export class UserWithProfileResponseDto {
   connections?: ConnectionSummaryResponseDto[];
 
   @ApiProperty({
+    description: 'Connections for this user',
+    type: ConnectionSummaryResponseDto,
+    isArray: true,
+    required: false,
+  })
+  pendingConnections?: ConnectionSummaryResponseDto[];
+
+  @ApiProperty({
     description: 'Companies the user follows',
     type: FollowedCompanySummaryResponseDto,
     isArray: true,

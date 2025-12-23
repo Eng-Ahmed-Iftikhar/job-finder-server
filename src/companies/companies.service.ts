@@ -13,10 +13,103 @@ export class CompaniesService {
     });
   }
 
-  findAll() {
-    return this.prisma.company.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll({
+    search,
+    location,
+    page = 1,
+    pageSize = 10,
+  }: {
+    search?: string;
+    location?: string;
+    page: number;
+    pageSize: number;
+  }) {
+    const take = Math.max(1, pageSize);
+    const skip = Math.max(0, (Math.max(1, page) - 1) * take);
+
+    // Parse location string into city, state, country
+    let city = '',
+      state = '',
+      country = '';
+    if (location) {
+      const parts = location
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length === 1) {
+        city = state = country = parts[0];
+      } else if (parts.length === 2) {
+        state = parts[0];
+        country = parts[1];
+      } else if (parts.length === 3) {
+        city = parts[0];
+        state = parts[1];
+        country = parts[2];
+      }
+    }
+
+    // Build location filter for profile.location
+    let locationFilter: Record<string, any> = {};
+    if (location) {
+      locationFilter = {
+        profile: {
+          location: {
+            OR: [
+              city ? { city: { contains: city, mode: 'insensitive' } } : {},
+              state ? { state: { contains: state, mode: 'insensitive' } } : {},
+              country
+                ? { country: { contains: country, mode: 'insensitive' } }
+                : {},
+            ].filter((f) => Object.keys(f).length > 0),
+          },
+        },
+      };
+    }
+
+    // Build main where clause
+    const where = {
+      ...(search
+        ? {
+            name: {
+              contains: search,
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
+      ...locationFilter,
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.company.findMany({
+        where,
+        include: {
+          profile: {
+            include: {
+              location: true,
+              employer: {
+                include: {
+                  employerJobs: {
+                    include: { job: true },
+                    where: { job: { status: 'PUBLISHED' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.company.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page: Math.max(1, page),
+      pageSize: take,
+    };
   }
 
   async findOne(id: string) {

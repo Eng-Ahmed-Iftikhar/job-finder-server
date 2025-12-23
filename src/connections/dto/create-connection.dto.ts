@@ -1,12 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional } from 'class-validator';
 
 export class CreateConnectionDto {
-  @ApiProperty({ description: 'Employee user id' })
+  @ApiPropertyOptional({ description: 'ConnectionRequest id (optional)' })
+  @IsOptional()
   @IsString()
-  employeeId!: string;
-
-  @ApiProperty({ description: 'Employer user id' })
-  @IsString()
-  employerId!: string;
+  connectionRequestId?: string;
 }

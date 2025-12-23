@@ -48,6 +48,23 @@ export class ConnectionRequestsController {
   findAll() {
     return this.service.findAll();
   }
+  @Get('me')
+  @ApiOperation({
+    summary: 'List connection requests for the authenticated employee',
+  })
+  @ApiOkResponse({ type: ConnectionRequestResponseDto, isArray: true })
+  @Roles(UserRole.EMPLOYEE)
+  employeeRequests(@Request() req: any) {
+    const employeeId = req.user?.id as string;
+    return this.service.findEmployeeRequests(employeeId);
+  }
+  @Patch(':id/accept')
+  @ApiOperation({ summary: 'Accept a connection request by id' })
+  @ApiOkResponse({ type: ConnectionRequestResponseDto })
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  accept(@Param('id') id: string) {
+    return this.service.acceptRequest(id);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a connection request by id' })

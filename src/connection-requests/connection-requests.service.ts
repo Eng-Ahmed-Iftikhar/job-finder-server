@@ -20,7 +20,7 @@ export class ConnectionRequestsService {
       data: {
         senderId,
         receiverId: dto.receiverId,
-        status: dto.status,
+        status: 'PENDING',
       },
     });
   }
@@ -43,10 +43,37 @@ export class ConnectionRequestsService {
     await this.ensureExists(id);
     return this.prisma.connectionRequest.update({ where: { id }, data: dto });
   }
-
+  async findEmployeeRequests(employeeId: string) {
+    return this.prisma.connectionRequest.findMany({
+      where: { senderId: employeeId, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
   async remove(id: string) {
     await this.ensureExists(id);
     return this.prisma.connectionRequest.delete({ where: { id } });
+  }
+  async acceptRequest(id: string) {
+    await this.ensureExists(id);
+    const req = await this.prisma.connectionRequest.update({
+      where: { id },
+      data: { status: 'ACCEPTED' },
+      include: { sender: true },
+    });
+    // Create connection
+    await this.prisma.connection.create({
+      data: {
+        connectionRequestId: req.id,
+      },
+    });
+    return {
+      id: req.id,
+      status: req.status,
+      senderId: req.senderId,
+      createdAt: req.createdAt,
+      updatedAt: req.updatedAt,
+      user: req.sender,
+    };
   }
 
   private async ensureExists(id: string) {

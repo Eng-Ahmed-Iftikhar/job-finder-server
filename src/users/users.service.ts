@@ -111,25 +111,129 @@ export class UsersService {
     return user;
   }
 
-  async findAllUsers(page: number = 1, limit: number = 10) {
+  async findAllUsers(
+    {
+      search,
+      location,
+      page,
+      limit,
+    }: {
+      page: number;
+      limit: number;
+      location?: string;
+      search?: string;
+    },
+    userId: string,
+  ) {
     const take = Math.max(1, limit);
     const skip = Math.max(0, (Math.max(1, page) - 1) * take);
 
+    // Parse location string into city, state, country
+    let city = '',
+      state = '',
+      country = '';
+    if (location) {
+      const parts = location
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length === 1) {
+        city = state = country = parts[0];
+      } else if (parts.length === 2) {
+        state = parts[0];
+        country = parts[1];
+      } else if (parts.length === 3) {
+        city = parts[0];
+        state = parts[1];
+        country = parts[2];
+      }
+    }
+
+    // Build location filter for profile.location
+    let locationFilter: Record<string, any> = {};
+    if (location) {
+      locationFilter = {
+        profile: {
+          location: {
+            OR: [
+              city ? { city: { contains: city, mode: 'insensitive' } } : {},
+              state ? { state: { contains: state, mode: 'insensitive' } } : {},
+              country
+                ? { country: { contains: country, mode: 'insensitive' } }
+                : {},
+            ].filter((f) => Object.keys(f).length > 0),
+          },
+        },
+      };
+    }
+
+    // Build main where clause
+    const where: Record<string, any> = {
+      ...(search
+        ? {
+            OR: [
+              {
+                email: {
+                  is: { email: { contains: search, mode: 'insensitive' } },
+                },
+              },
+              {
+                profile: {
+                  firstName: { contains: search, mode: 'insensitive' },
+                },
+              },
+              {
+                profile: {
+                  lastName: { contains: search, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+      ...locationFilter,
+      ...(userId ? { id: { not: userId } } : {}),
+    };
+
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         include: {
           email: true,
-          profile: true,
+          profile: {
+            include: { location: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take,
         skip,
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
 
+    // Updated: Find if a connection exists between userId and each user via connectionRequest
+    let usersWithMutuals = users;
+    if (userId) {
+      usersWithMutuals = await Promise.all(
+        users.map(async (user) => {
+          // Find a connection where the connectionRequest links userId and user.id
+          const connectionRequest =
+            await this.prisma.connectionRequest.findFirst({
+              where: {
+                status: 'PENDING',
+                OR: [
+                  { senderId: userId, receiverId: user.id },
+                  { senderId: user.id, receiverId: userId },
+                ],
+              },
+            });
+
+          return { ...user, connectionRequest };
+        }),
+      );
+    }
+
     return {
-      data: users,
+      data: usersWithMutuals,
       total,
       page: Math.max(1, page),
       pageSize: take,
@@ -188,28 +292,79 @@ export class UsersService {
       updatedAt: profile.updatedAt,
     };
 
+    // Updated: Fetch connections where the connectionRequest involves this user
     const connections = await this.prisma.connection.findMany({
       where: {
-        OR: [{ employeeId: userId }, { employerId: userId }],
+        connectionRequest: {
+          status: 'ACCEPTED',
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
       },
       include: {
-        employee: { include: { profile: true } },
-        employer: { include: { profile: true } },
+        connectionRequest: {
+          include: {
+            sender: { include: { profile: { include: { location: true } } } },
+            receiver: { include: { profile: { include: { location: true } } } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    const connectionSummaries = connections.map((c) => {
-      const other = c.employeeId === userId ? c.employer : c.employee;
+    const pendingConnections = await this.prisma.connection.findMany({
+      where: {
+        connectionRequest: {
+          status: 'PENDING',
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
+      },
+      include: {
+        connectionRequest: {
+          include: {
+            sender: { include: { profile: { include: { location: true } } } },
+            receiver: { include: { profile: { include: { location: true } } } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const pendingConnectionsSummaries = pendingConnections.map((c) => {
+      const otherUser =
+        c.connectionRequest?.senderId === userId
+          ? c.connectionRequest?.receiver
+          : c.connectionRequest?.sender;
       return {
         id: c.id,
         user: {
-          id: other?.id ?? '',
-          firstName: other?.profile?.firstName ?? null,
-          lastName: other?.profile?.lastName ?? null,
-          pictureUrl: other?.profile?.pictureUrl ?? null,
-          role: other?.profile?.role ?? null,
+          id: otherUser?.id,
+          firstName: otherUser?.profile?.firstName,
+          lastName: otherUser?.profile?.lastName,
+          pictureUrl: otherUser?.profile?.pictureUrl,
+          role: otherUser?.profile?.role,
+          location: otherUser?.profile?.location,
         },
+        connectionRequestId: c.connectionRequestId,
+        status: c.connectionRequest?.status,
+      };
+    });
+    // Provide summary with the other user's id
+    const connectionSummaries = connections.map((c) => {
+      const otherUser =
+        c.connectionRequest?.senderId === userId
+          ? c.connectionRequest?.receiver
+          : c.connectionRequest?.sender;
+      return {
+        id: c.id,
+        user: {
+          id: otherUser?.id,
+          firstName: otherUser?.profile?.firstName,
+          lastName: otherUser?.profile?.lastName,
+          pictureUrl: otherUser?.profile?.pictureUrl,
+          role: otherUser?.profile?.role,
+          location: otherUser?.profile?.location,
+        },
+        connectionRequestId: c.connectionRequestId,
+        status: c.connectionRequest?.status,
       };
     });
 
@@ -264,7 +419,8 @@ export class UsersService {
         updatedAt: user.updatedAt,
       },
       profile: userProfile as never,
-      connections: connectionSummaries,
+      connections: connectionSummaries as never,
+      pendingConnections: pendingConnectionsSummaries as never,
       followedCompanies: followedCompaniesSummaries,
       savedJobIds: savedJobIds.map((s) => s.jobId),
       appliedJobIds: appliedJobIds.map((a) => a.jobId),

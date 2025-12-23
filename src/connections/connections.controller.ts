@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  Patch,
   Post,
   Request,
   UseGuards,
@@ -16,14 +15,13 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { ConnectionsService } from './connections.service';
-import { CreateConnectionDto } from './dto/create-connection.dto';
-import { UpdateConnectionDto } from './dto/update-connection.dto';
-import { ConnectionResponseDto } from './dto/connection-response.dto';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../types/user.types';
+import { ConnectionsService } from './connections.service';
+import { ConnectionResponseDto } from './dto/connection-response.dto';
+import { CreateConnectionDto } from './dto/create-connection.dto';
 
 @ApiTags('Connections')
 @Controller('connections')
@@ -31,15 +29,6 @@ import { UserRole } from '../types/user.types';
 @ApiBearerAuth()
 export class ConnectionsController {
   constructor(private readonly connectionsService: ConnectionsService) {}
-
-  @Post('connect/:userId')
-  @ApiOperation({ summary: 'Create a connection with a user' })
-  @ApiCreatedResponse({ type: ConnectionResponseDto })
-  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
-  connectWithUser(@Param('userId') targetUserId: string, @Request() req: any) {
-    const currentUserId = req.user?.id as string;
-    return this.connectionsService.connectWithUser(currentUserId, targetUserId);
-  }
 
   @Post()
   @ApiOperation({ summary: 'Create a connection' })
@@ -92,14 +81,6 @@ export class ConnectionsController {
   @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
   findOne(@Param('id') id: string) {
     return this.connectionsService.findOne(id);
-  }
-
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update a connection' })
-  @ApiOkResponse({ type: ConnectionResponseDto })
-  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
-  update(@Param('id') id: string, @Body() dto: UpdateConnectionDto) {
-    return this.connectionsService.update(id, dto);
   }
 
   @Delete(':id')

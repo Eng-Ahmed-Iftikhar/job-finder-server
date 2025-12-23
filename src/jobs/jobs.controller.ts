@@ -17,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { JobsService } from './jobs.service';
@@ -71,13 +72,29 @@ export class JobsController {
       },
     },
   })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search users by email, first name, or last name',
+  })
+  @ApiQuery({
+    name: 'location',
+    required: false,
+    description: 'Filter users by location (city, state, country)',
+  })
   @Roles(UserRole.EMPLOYEE)
   suggested(
-    @Query('search') search: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+    @Query('search') search: string,
+    @Query('location') location?: string,
   ) {
-    return this.service.findSuggested(search, page, pageSize);
+    return this.service.findSuggested({
+      search,
+      location,
+      page,
+      limit: pageSize,
+    });
   }
   @Get('savedIds')
   @ApiOperation({
