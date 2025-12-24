@@ -19,6 +19,7 @@ import { JobsModule } from './jobs/jobs.module';
 
 import { SearchModule } from './search/search.module';
 import { LocationModule } from './location/location.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { LocationModule } from './location/location.module';
     JobsModule,
     SearchModule,
     LocationModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

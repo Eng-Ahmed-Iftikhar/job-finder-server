@@ -35,6 +35,13 @@ model User {
   employerJobs    JobEmployer[]
   employeeJobs    JobEmployee[]
   savedJobs       SavedJob[]
+  chatUsers ChatUser[]
+  sentMessages ChatMessage[] @relation("SentMessages")
+  messageReactions MessageReaction[]
+  messageReplies MessageReply[]
+  messageUserStatuses MessageUserStatus[]
+  blockedUsers ChatBlock[] @relation("Blocker")
+  blockedByUsers ChatBlock[] @relation("Blocked")
 
   @@map("users")
 }
@@ -512,3 +519,170 @@ enum JobEmployeeStatus {
   REJECTED
   CANCELLED
 }
+
+// =====================
+// Professional Chat System Tables
+// =====================
+
+model Chat {
+  id        String   @id @default(uuid())
+  type      ChatType
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  users     ChatUser[]
+  group     ChatGroup?
+  messages  ChatMessage[]
+  blocks    ChatBlock[]
+
+  @@map("chats")
+}
+
+model ChatUser {
+  id        String   @id @default(uuid())
+  chatId    String  @map("chat_id")
+  userId    String  @unique @map("user_id")
+  role      ChatUserRole @default(MEMBER)
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+  deletedAt DateTime? @map("deleted_at")
+  lastReadMessageId String? @map("last_read_message_id")
+  mutedUntil DateTime? @map("muted_until")
+
+  // Relations
+  chat      Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageStatuses MessageUserStatus[]
+  lastReadMessage ChatMessage? @relation("LastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([chatId, userId])
+  @@map("chat_users")
+}
+
+model ChatGroup {
+  id        String   @id @default(uuid())
+  chatId    String  @unique @map("chat_id")
+  name      String
+  icon      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  chat      Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@map("chat_groups")
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  chatId      String   @map("chat_id")
+  senderId    String   @map("sender_id")
+  text        String?
+  fileUrl     String?  @map("file_url")
+  messageType MessageType @default(TEXT) @map("message_type")
+  status      MessageStatus @default(SENT)
+  createdAt   DateTime @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  chat        Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender      User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  lastReadByUsers ChatUser[] @relation("LastReadMessage")
+  userStatuses MessageUserStatus[]
+  reactions   MessageReaction[]
+  replies     MessageReply[] @relation("MessageReplies")
+  parentReply MessageReply[] @relation("ParentMessageReply")
+  @@index([chatId, createdAt])
+  @@map("chat_messages")
+}
+
+model MessageReaction {
+  id         String   @id @default(uuid())
+  messageId  String   @map("message_id")
+  userId     String   @map("user_id")
+  emoji      String
+  createdAt  DateTime @default(now()) @map("created_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  // Relations
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@map("message_reactions")
+}
+
+model MessageReply {
+  id            String   @id @default(uuid())
+  messageId     String   @map("message_id")
+  replyToId     String?  @map("reply_to_id")
+  userId        String   @map("user_id")
+  text          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  message       ChatMessage @relation("MessageReplies", fields: [messageId], references: [id], onDelete: Cascade)
+  replyTo       ChatMessage? @relation("ParentMessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("message_replies")
+}
+
+model MessageUserStatus {
+  id         String   @id @default(uuid())
+  messageId  String   @map("message_id")
+  userId     String   @map("user_id")
+  receivedAt DateTime? @map("received_at")
+  seenAt     DateTime? @map("seen_at")
+
+  // Relations
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "message_user_status_user_id_fkey")
+  chatUser   ChatUser?   @relation(fields: [userId], references: [userId], map: "message_user_status_chat_user_id_fkey")
+
+  @@unique([messageId, userId])
+  @@map("message_user_status")
+}
+
+model ChatBlock {
+  id         String   @id @default(uuid())
+  blockedBy  String   @map("blocked_by")
+  blockedTo  String   @map("blocked_to")
+  chatId     String?  @map("chat_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  // Relations
+  blocker    User   @relation("Blocker", fields: [blockedBy], references: [id], onDelete: Cascade)
+  blocked    User   @relation("Blocked", fields: [blockedTo], references: [id], onDelete: Cascade)
+  chat       Chat?  @relation(fields: [chatId], references: [id], onDelete: SetNull)
+
+  @@unique([blockedBy, blockedTo, chatId])
+  @@map("chat_blocks")
+}
+
+enum ChatType {
+  PRIVATE
+  GROUP
+}
+
+enum ChatUserRole {
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  FILE
+}
+
+enum MessageStatus {
+  SENT
+  FAILED
+}
+
