@@ -8,7 +8,13 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { AddReplyDto } from './dto/add-reply.dto';
 import { BlockUserDto } from './dto/block-user.dto';
-import { ChatUserRole } from '@prisma/client';
+import {
+  Chat,
+  ChatGroup,
+  ChatMessage,
+  ChatUser,
+  ChatUserRole,
+} from '@prisma/client';
 
 @Injectable()
 export class ChatService {
@@ -18,23 +24,120 @@ export class ChatService {
     private readonly chatGateway: ChatGateway,
   ) {}
 
-  async getChats(userId: string): Promise<any> {
-    // Get all chats for a user
-    return await this.prisma.chat.findMany({
-      where: {
-        users: {
-          some: { userId },
+  async getChats(params: {
+    userId: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<any> {
+    const { userId, search, page = 1, limit = 20 } = params;
+    const skip = (page - 1) * limit;
+
+    // Build search filter
+    let or: Record<string, any>[] = [];
+    if (search) {
+      or = [
+        // Group chat: search by group name
+        {
+          type: 'GROUP',
+          group: {
+            name: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
         },
-      },
-      include: {
-        users: true,
-        group: true,
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+        // Private chat: search by other user's name
+        {
+          type: 'PRIVATE',
+          users: {
+            some: {
+              user: {
+                profile: {
+                  OR: [
+                    { firstName: { contains: search, mode: 'insensitive' } },
+                    { lastName: { contains: search, mode: 'insensitive' } },
+                  ],
+                },
+              },
+              NOT: { userId },
+            },
+          },
         },
+      ];
+    }
+
+    const where: Record<string, any> = {
+      users: {
+        some: { userId },
       },
+    };
+    if (or.length) {
+      where.OR = or;
+    }
+
+    const [chats, total] = await Promise.all([
+      this.prisma.chat.findMany({
+        where,
+        include: {
+          users: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  profile: true,
+                },
+              },
+            },
+          },
+          group: true,
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 2,
+            include: {
+              reactions: true,
+              replies: true,
+              userStatuses: true,
+            },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.chat.count({ where }),
+    ]);
+
+    const newChats: Chat[] = [];
+    const chatUsers: ChatUser[] = [];
+    const chatGroups: ChatGroup[] = [];
+    const chatMessages: ChatMessage[] = [];
+
+    chats.forEach((chat) => {
+      newChats.push({
+        id: chat.id,
+        type: chat.type,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+        deletedAt: chat.deletedAt,
+      });
+      chatUsers.push(...chat.users);
+      if (chat.group) chatGroups.push(chat.group);
+      chatMessages.push(...chat.messages);
     });
+
+    return {
+      data: {
+        chats: newChats,
+        users: chatUsers,
+        groups: chatGroups,
+        messages: chatMessages,
+      },
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async getChat(id: string): Promise<any> {
@@ -117,16 +220,30 @@ export class ChatService {
     return await this.prisma.chat.delete({ where: { id } });
   }
 
-  async getMessages(chatId: string): Promise<any> {
-    return await this.prisma.chatMessage.findMany({
-      where: { chatId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        reactions: true,
-        replies: true,
-        userStatuses: true,
-      },
-    });
+  async getMessages(chatId: string, page = 1, limit = 20): Promise<any> {
+    const skip = (page - 1) * limit;
+    const [messages, total] = await Promise.all([
+      this.prisma.chatMessage.findMany({
+        where: { chatId },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          reactions: true,
+          replies: true,
+          userStatuses: true,
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.chatMessage.count({ where: { chatId } }),
+    ]);
+
+    return {
+      data: messages,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async sendMessage(chatId: string, dto: SendMessageDto): Promise<any> {

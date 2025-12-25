@@ -1,42 +1,77 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Put,
-  Delete,
-  Param,
-  Body,
   Query,
   Request,
+  UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
+  ApiBearerAuth,
   ApiBody,
+  ApiOperation,
   ApiParam,
   ApiQuery,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { ChatService } from './chat.service';
-import { CreateChatDto } from './dto/create-chat.dto';
-import { UpdateChatDto } from './dto/update-chat.dto';
-import { SendMessageDto } from './dto/send-message.dto';
-import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { AddReplyDto } from './dto/add-reply.dto';
 import { BlockUserDto } from './dto/block-user.dto';
+import { CreateChatDto } from './dto/create-chat.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { UpdateChatDto } from './dto/update-chat.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
 
 @ApiTags('Chat')
 @Controller('chats')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all chats for a user' })
-  @ApiQuery({ name: 'userId', required: true })
+  @ApiOperation({
+    summary: 'Get all chats for a user with pagination and search',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search by group name or user name',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number',
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Items per page',
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: 'List of chats.', type: [Object] })
-  getChats(@Query('userId') userId: string) {
-    return this.chatService.getChats(userId);
+  getChats(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    const userId = req.user.id;
+    return this.chatService.getChats({
+      userId: userId || '',
+      search,
+      page: Number(page) || 1,
+      limit: Number(limit) || 20,
+    });
   }
 
   @Get(':id')
@@ -63,6 +98,8 @@ export class ChatController {
   })
   @ApiResponse({ status: 201, description: 'Chat created.', type: Object })
   createChat(@Body() dto: CreateChatDto, @Request() req: any) {
+    console.log(req.user);
+
     return this.chatService.createChat(dto, req.user.id);
   }
 
@@ -97,15 +134,37 @@ export class ChatController {
 
   // Chat messages
   @Get(':id/messages')
-  @ApiOperation({ summary: 'Get messages for a chat' })
+  @ApiOperation({
+    summary: 'Get messages for a chat with pagination grouped by date',
+  })
   @ApiParam({ name: 'id', required: true })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number',
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Items per page',
+    type: Number,
+  })
   @ApiResponse({
     status: 200,
-    description: 'List of messages.',
+    description: 'Messages grouped by date.',
     type: [Object],
   })
-  getMessages(@Param('id') chatId: string) {
-    return this.chatService.getMessages(chatId);
+  getMessages(
+    @Param('id') chatId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    return this.chatService.getMessages(
+      chatId,
+      Number(page) || 1,
+      Number(limit) || 20,
+    );
   }
 
   @Post(':id/messages')
@@ -126,7 +185,7 @@ export class ChatController {
     },
   })
   @ApiResponse({ status: 201, description: 'Message sent.', type: Object })
-  sendMessage(@Param('id') chatId: string, @Body() dto: any) {
+  sendMessage(@Param('id') chatId: string, @Body() dto: SendMessageDto) {
     return this.chatService.sendMessage(chatId, dto);
   }
 
