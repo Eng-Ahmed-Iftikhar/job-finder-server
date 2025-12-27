@@ -8,21 +8,230 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { AddReplyDto } from './dto/add-reply.dto';
 import { BlockUserDto } from './dto/block-user.dto';
-import {
-  Chat,
-  ChatGroup,
-  ChatMessage,
-  ChatUser,
-  ChatUserRole,
-} from '@prisma/client';
+import { v4 as uuidv4 } from 'uuid';
+
+import { ChatGroup, ChatMessage, ChatUser, ChatUserRole } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
+  /**
+   * Get all messages for the user that are not received
+   * @param userId string
+   * @returns Array of unread messages
+   */
+  async getUnreadMessages(userId: string): Promise<any[]> {
+    // Find all MessageUserStatus for this user where receivedAt is null
+    const statuses = await this.prisma.messageUserStatus.findMany({
+      where: {
+        userId,
+        receivedAt: null,
+      },
+      include: {
+        message: {
+          include: {
+            reactions: true,
+            replies: true,
+            userStatuses: true,
+          },
+        },
+      },
+      orderBy: {
+        message: {
+          createdAt: 'desc',
+        },
+      },
+    });
+    // Return the messages
+    return statuses.map((status) => status.message);
+  }
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly chatGateway: ChatGateway,
   ) {}
+
+  /**
+   * Get count of new (received but not seen) messages for each user in a chat
+   * @param chatId string
+   * @param userId string (the user for whom to count unseen messages)
+   * @returns Array<{ senderId: string, count: number }>
+   */
+  async getUnseenMessageCounts(
+    chatId: string,
+    userId: string,
+  ): Promise<{ senderId: string; count: number }[]> {
+    // Find all messages in the chat not sent by userId
+    // For each message, check MessageUserStatus for userId: receivedAt != null && seenAt == null
+    // Group by senderId, count
+    const unseenCounts = await this.prisma.chatMessage.groupBy({
+      by: ['senderId'],
+      where: {
+        chatId,
+        senderId: { not: userId },
+        userStatuses: {
+          some: {
+            userId,
+            receivedAt: { not: null },
+            seenAt: null,
+          },
+        },
+      },
+      _count: { _all: true },
+    });
+    // Format: [{ senderId, count }]
+    return unseenCounts.map((item) => ({
+      senderId: item.senderId,
+      count: item._count._all,
+    }));
+  }
+
+  async markMessageAsReceived(userId: string, messageId: string) {
+    // Update or create MessageUserStatus for this user and message
+    const newMessageStatus = await this.prisma.messageUserStatus.findUnique({
+      where: {
+        messageId_userId: {
+          messageId,
+          userId,
+        },
+      },
+    });
+    if (newMessageStatus?.receivedAt) {
+      return;
+    }
+    const messageStatus = await this.prisma.messageUserStatus.upsert({
+      where: {
+        messageId_userId: {
+          messageId,
+          userId,
+        },
+      },
+      update: {
+        receivedAt: new Date(),
+      },
+      create: {
+        messageId,
+        userId,
+        receivedAt: new Date(),
+      },
+    });
+    const message = await this.prisma.chatMessage.findFirst({
+      where: { id: messageStatus.messageId },
+      include: {
+        reactions: true,
+        replies: true,
+        userStatuses: true,
+      },
+    });
+    const users = await this.prisma.chatUser.findMany({
+      where: {
+        chatId: message?.chatId,
+      },
+      select: { userId: true },
+    });
+
+    for (const user of users) {
+      if (userId !== message?.senderId) {
+        this.chatGateway.handleMessageReceived(user.userId, message);
+      }
+    }
+    return message;
+  }
+  async updateMessageUserStatus(
+    statusId: string,
+    body: { receivedAt?: string; seenAt?: string },
+    userId: string,
+  ): Promise<any> {
+    // Only update provided fields
+
+    const status = await this.prisma.messageUserStatus.update({
+      where: { id: statusId },
+      data: {
+        ...(body?.receivedAt
+          ? {
+              receivedAt: body.receivedAt,
+            }
+          : {}),
+        ...(body?.seenAt
+          ? {
+              seenAt: body?.seenAt,
+            }
+          : {}),
+      },
+    });
+    const message = await this.prisma.chatMessage.findFirst({
+      where: { id: status.messageId },
+      include: {
+        reactions: true,
+        replies: true,
+        userStatuses: true,
+      },
+    });
+
+    const users = await this.prisma.chatUser.findMany({
+      where: {
+        chatId: message?.chatId,
+        userId: { not: userId },
+      },
+      select: { userId: true },
+    });
+
+    for (const user of users) {
+      if (userId !== user.userId) {
+        this.chatGateway.handleMessageSeen(user.userId, message);
+      }
+    }
+
+    return status;
+  }
+  async markUserOnline(userId: string): Promise<void> {
+    // Get all chats for this user
+    const chats = await this.prisma.chat.findMany({
+      where: {
+        users: {
+          some: { userId },
+        },
+      },
+      select: { id: true },
+    });
+
+    for (const chat of chats) {
+      // Get all messages in this chat
+      const messages = await this.prisma.chatMessage.findMany({
+        where: { chatId: chat.id },
+        select: { id: true, chatId: true },
+      });
+      for (const msg of messages) {
+        // Check if messageUserStatus exists for this message and user
+        const status = await this.prisma.messageUserStatus.findUnique({
+          where: {
+            messageId_userId: {
+              messageId: msg.id,
+              userId,
+            },
+          },
+        });
+        if (!status) {
+          return;
+
+          // this.chatGateway.emitUserReceivedMessage(userId, msg.id, msg.chatId);
+        } else if (!status.receivedAt) {
+          // Update receivedAt if not set
+          await this.prisma.messageUserStatus.update({
+            where: {
+              messageId_userId: {
+                messageId: msg.id,
+                userId,
+              },
+            },
+            data: {
+              receivedAt: new Date(),
+            },
+          });
+          // this.chatGateway.emitUserMessageReceived(msg.chatId, userId, msg.id);
+        }
+      }
+    }
+  }
 
   async getChats(params: {
     userId: string;
@@ -108,23 +317,30 @@ export class ChatService {
       this.prisma.chat.count({ where }),
     ]);
 
-    const newChats: Chat[] = [];
     const chatUsers: ChatUser[] = [];
     const chatGroups: ChatGroup[] = [];
     const chatMessages: ChatMessage[] = [];
 
-    chats.forEach((chat) => {
-      newChats.push({
-        id: chat.id,
-        type: chat.type,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-        deletedAt: chat.deletedAt,
-      });
-      chatUsers.push(...chat.users);
-      if (chat.group) chatGroups.push(chat.group);
-      chatMessages.push(...chat.messages);
-    });
+    const newChats = await Promise.all(
+      chats.map(async (chat) => {
+        const countUnseenMessages = await this.getUnseenMessageCounts(
+          chat.id,
+          userId,
+        );
+        chatUsers.push(...chat.users);
+        if (chat.group) chatGroups.push(chat.group);
+        chatMessages.push(...chat.messages);
+
+        return {
+          id: chat.id,
+          type: chat.type,
+          countUnseenMessages,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+          deletedAt: chat.deletedAt,
+        };
+      }),
+    );
 
     return {
       data: {
@@ -144,12 +360,8 @@ export class ChatService {
     return await this.prisma.chat.findUnique({
       where: { id },
       include: {
-        users: true,
+        users: { include: { user: { include: { profile: true } } } },
         group: true,
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-        },
       },
     });
   }
@@ -168,7 +380,15 @@ export class ChatService {
       });
       if (existing) return existing;
     }
-    // Create chat and users
+    // Deduplicate userIds and ensure admin is only added once
+    const allUserIds = Array.from(new Set([...dto.userIds, userId]));
+
+    const allUsers = allUserIds.map((id) => ({
+      userId: id,
+      joinedAt: new Date(),
+      role: id === userId ? ChatUserRole.ADMIN : ChatUserRole.MEMBER,
+    }));
+
     const chat = await this.prisma.chat.create({
       data: {
         type: dto.type,
@@ -182,17 +402,16 @@ export class ChatService {
               }
             : undefined,
         users: {
-          create: [
-            ...dto.userIds.map((userId) => ({
-              userId,
-              joinedAt: new Date(),
-              role: ChatUserRole.MEMBER,
-            })),
-            { userId, joinedAt: new Date(), role: ChatUserRole.ADMIN },
-          ],
+          create: allUsers,
         },
       },
-      include: { users: true, group: true },
+      include: {
+        users: { include: { user: { include: { profile: true } } } },
+        group: true,
+      },
+    });
+    dto.userIds.forEach((id) => {
+      this.chatGateway.handleNewChat(id, chat);
     });
     return chat;
   }
@@ -225,7 +444,7 @@ export class ChatService {
     const [messages, total] = await Promise.all([
       this.prisma.chatMessage.findMany({
         where: { chatId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
         include: {
           reactions: true,
           replies: true,
@@ -247,13 +466,16 @@ export class ChatService {
   }
 
   async sendMessage(chatId: string, dto: SendMessageDto): Promise<any> {
-    const message = await this.prisma.chatMessage.create({
+    const messageId = uuidv4();
+    // Create the message first so the foreign key exists
+    let message: ChatMessage = await this.prisma.chatMessage.create({
       data: {
         chatId,
         senderId: dto.senderId,
         text: dto.text,
         fileUrl: dto.fileUrl,
         messageType: dto.messageType,
+        id: messageId,
       },
       include: {
         reactions: true,
@@ -261,7 +483,38 @@ export class ChatService {
         userStatuses: true,
       },
     });
-    this.chatGateway.emitNewMessage(chatId, message);
+
+    const chatUsers = await this.prisma.chatUser.findMany({
+      where: { chatId, userId: { not: dto.senderId } },
+      select: { userId: true },
+    });
+    for (const chatUser of chatUsers) {
+      // Upsert messageUserStatus for each user, ensure id is uuid
+      await this.prisma.messageUserStatus.upsert({
+        where: {
+          messageId_userId: {
+            messageId,
+            userId: chatUser.userId,
+          },
+        },
+        update: {},
+        create: {
+          id: uuidv4(),
+          messageId,
+          userId: chatUser.userId,
+        },
+      });
+      message = (await this.prisma.chatMessage.findUnique({
+        where: { id: messageId },
+        include: {
+          reactions: true,
+          replies: true,
+          userStatuses: true,
+        },
+      })) as ChatMessage;
+
+      this.chatGateway.handleNewMessage(chatUser.userId, message);
+    }
     return message;
   }
 
@@ -286,7 +539,7 @@ export class ChatService {
       where: { id: messageId },
     });
     if (message) {
-      this.chatGateway.emitMessageDeleted(message.chatId, messageId);
+      // this.chatGateway.emitMessageDeleted(message.chatId, messageId);
     }
     return deleted;
   }
@@ -315,12 +568,12 @@ export class ChatService {
         seenAt: new Date(),
       },
     });
-    this.chatGateway.emitUserSeen(chatId, userId, messageId);
+    // this.chatGateway.emitUserSeen(chatId, userId, messageId);
   }
 
   // User typing event
   userTyping(chatId: string, userId: string): void {
-    this.chatGateway.emitUserTyping(chatId, userId);
+    // this.chatGateway.emitUserTyping(chatId, userId);
   }
 
   // User joined/left events
@@ -330,7 +583,7 @@ export class ChatService {
       where: { chatId, userId },
       data: { joinedAt: new Date(), leftAt: null },
     });
-    this.chatGateway.emitUserJoined(chatId, userId);
+    // this.chatGateway.emitUserJoined(chatId, userId);
   }
   async userLeft(chatId: string, userId: string): Promise<void> {
     // Update leftAt in ChatUser
@@ -338,7 +591,7 @@ export class ChatService {
       where: { chatId, userId },
       data: { leftAt: new Date() },
     });
-    this.chatGateway.emitUserLeft(chatId, userId);
+    // this.chatGateway.emitUserLeft(chatId, userId);
   }
 
   async addReaction(messageId: string, dto: AddReactionDto): Promise<any> {
@@ -351,7 +604,7 @@ export class ChatService {
     });
     // You may want to fetch chatId from message if not provided in dto
     if ((dto as any).chatId) {
-      this.chatGateway.emitNewReaction((dto as any).chatId, reaction);
+      // this.chatGateway.emitNewReaction((dto as any).chatId, reaction);
     }
     return reaction;
   }
@@ -372,7 +625,7 @@ export class ChatService {
       },
     });
     if ((dto as any).chatId) {
-      this.chatGateway.emitNewReply((dto as any).chatId, reply);
+      // this.chatGateway.emitNewReply((dto as any).chatId, reply);
     }
     return reply;
   }

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -72,6 +73,58 @@ export class ChatController {
       page: Number(page) || 1,
       limit: Number(limit) || 20,
     });
+  }
+
+  @Get('unread-messages')
+  @ApiOperation({
+    summary: 'Get all unread (not received) messages for the current user',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of unread messages.',
+    type: [Object],
+  })
+  getUnreadMessages(@Request() req: any) {
+    const userId = req.user.id;
+    return this.chatService.getUnreadMessages(userId as string);
+  }
+  @Patch('/message-status-update/:statusId')
+  @ApiOperation({ summary: 'Update message user status (receivedAt/seenAt)' })
+  @ApiParam({ name: 'statusId', required: true })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        receivedAt: { type: 'string', format: 'date-time', nullable: true },
+        seenAt: { type: 'string', format: 'date-time', nullable: true },
+      },
+    },
+    examples: {
+      received: {
+        summary: 'Mark as received',
+        value: { receivedAt: new Date().toISOString() },
+      },
+      seen: {
+        summary: 'Mark as seen',
+        value: { seenAt: new Date().toISOString() },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Message user status updated.',
+    type: Object,
+  })
+  updateMessageUserStatus(
+    @Request() req: any,
+    @Param('statusId') statusId: string,
+    @Body() body: { receivedAt?: string; seenAt?: string },
+  ) {
+    return this.chatService.updateMessageUserStatus(
+      statusId,
+      body,
+      req.user.id,
+    );
   }
 
   @Get(':id')
