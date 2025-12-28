@@ -28,7 +28,7 @@ import { AddReplyDto } from './dto/add-reply.dto';
 import { BlockUserDto } from './dto/block-user.dto';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
-import { UpdateChatDto } from './dto/update-chat.dto';
+import { UpdateChatDto, UpdateChatGroupDto } from './dto/update-chat.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 
 @ApiTags('Chat')
@@ -157,7 +157,7 @@ export class ChatController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update a chat' })
+  @ApiOperation({ summary: 'Update a chat (non-group fields)' })
   @ApiParam({ name: 'id', required: true })
   @ApiBody({
     type: UpdateChatDto,
@@ -165,16 +165,37 @@ export class ChatController {
       default: {
         summary: 'Update chat',
         value: {
-          name: 'Updated Chat Name',
-          isGroup: false,
-          // Add other fields as defined in UpdateChatDto
+          type: 'PRIVATE',
         },
       },
     },
   })
   @ApiResponse({ status: 200, description: 'Chat updated.', type: Object })
-  updateChat(@Param('id') id: string, @Body() dto: any) {
+  updateChat(@Param('id') id: string, @Body() dto: UpdateChatDto) {
     return this.chatService.updateChat(id, dto);
+  }
+
+  @Patch(':id/group')
+  @ApiOperation({
+    summary: 'Update group details (name, description, iconUrl)',
+  })
+  @ApiParam({ name: 'id', required: true })
+  @ApiBody({
+    type: UpdateChatGroupDto,
+    examples: {
+      default: {
+        summary: 'Update group',
+        value: {
+          name: 'Updated Group Name',
+          description: 'Updated group description',
+          iconUrl: 'https://example.com/icon.png',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Group updated.', type: Object })
+  updateGroup(@Param('id') id: string, @Body() dto: UpdateChatGroupDto) {
+    return this.chatService.updateGroup(id, dto);
   }
 
   @Delete(':id')

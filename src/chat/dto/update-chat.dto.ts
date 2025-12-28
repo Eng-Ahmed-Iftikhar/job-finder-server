@@ -10,14 +10,30 @@ export class UpdateChatDto {
   @IsOptional()
   @IsEnum(['PRIVATE', 'GROUP'])
   type?: 'PRIVATE' | 'GROUP';
+}
+
+export class UpdateChatGroupDto {
+  @ApiProperty({
+    example: 'PRIVATE',
+    enum: ['PRIVATE', 'GROUP'],
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(['PRIVATE', 'GROUP'])
+  type?: 'PRIVATE' | 'GROUP';
 
   @ApiProperty({ example: 'Group Name', required: false })
   @IsOptional()
   @IsString()
-  groupName?: string;
+  name?: string;
+
+  @ApiProperty({ example: 'Group description', required: false })
+  @IsOptional()
+  @IsString()
+  description?: string;
 
   @ApiProperty({ example: 'https://example.com/icon.png', required: false })
   @IsOptional()
   @IsString()
-  groupIcon?: string;
+  iconUrl?: string;
 }

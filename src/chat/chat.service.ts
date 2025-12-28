@@ -2,7 +2,7 @@ import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from './chat.gateway';
 import { CreateChatDto } from './dto/create-chat.dto';
-import { UpdateChatDto } from './dto/update-chat.dto';
+import { UpdateChatDto, UpdateChatGroupDto } from './dto/update-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
@@ -130,7 +130,7 @@ export class ChatService {
     });
 
     for (const user of users) {
-      if (userId !== message?.senderId) {
+      if (userId !== user.userId) {
         this.chatGateway.handleMessageReceived(user.userId, message);
       }
     }
@@ -397,7 +397,7 @@ export class ChatService {
             ? {
                 create: {
                   name: dto.groupName || '',
-                  icon: dto.groupIcon,
+                  iconUrl: dto.groupIcon || '',
                 },
               }
             : undefined,
@@ -417,21 +417,25 @@ export class ChatService {
   }
 
   async updateChat(id: string, dto: UpdateChatDto): Promise<any> {
+    // Only update chat fields (not group)
     return await this.prisma.chat.update({
       where: { id },
       data: {
         type: dto.type,
-        group:
-          dto.groupName || dto.groupIcon
-            ? {
-                update: {
-                  name: dto.groupName,
-                  icon: dto.groupIcon,
-                },
-              }
-            : undefined,
       },
       include: { users: true, group: true },
+    });
+  }
+
+  async updateGroup(id: string, dto: UpdateChatGroupDto): Promise<any> {
+    // Only update group fields
+    return await this.prisma.chatGroup.update({
+      where: { chatId: id },
+      data: {
+        name: dto.name,
+        description: dto.description,
+        iconUrl: dto.iconUrl,
+      },
     });
   }
 
@@ -571,11 +575,6 @@ export class ChatService {
     // this.chatGateway.emitUserSeen(chatId, userId, messageId);
   }
 
-  // User typing event
-  userTyping(chatId: string, userId: string): void {
-    // this.chatGateway.emitUserTyping(chatId, userId);
-  }
-
   // User joined/left events
   async userJoined(chatId: string, userId: string): Promise<void> {
     // Update joinedAt in ChatUser
@@ -602,10 +601,7 @@ export class ChatService {
         emoji: dto.emoji,
       },
     });
-    // You may want to fetch chatId from message if not provided in dto
-    if ((dto as any).chatId) {
-      // this.chatGateway.emitNewReaction((dto as any).chatId, reaction);
-    }
+
     return reaction;
   }
 
@@ -624,9 +620,7 @@ export class ChatService {
         replyToId: dto.replyToId,
       },
     });
-    if ((dto as any).chatId) {
-      // this.chatGateway.emitNewReply((dto as any).chatId, reply);
-    }
+
     return reply;
   }
 
