@@ -1,16 +1,15 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from './chat.gateway';
-import { CreateChatDto } from './dto/create-chat.dto';
-import { UpdateChatDto, UpdateChatGroupDto } from './dto/update-chat.dto';
-import { SendMessageDto } from './dto/send-message.dto';
-import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { AddReplyDto } from './dto/add-reply.dto';
-import { BlockUserDto } from './dto/block-user.dto';
-import { v4 as uuidv4 } from 'uuid';
+import { CreateChatDto } from './dto/create-chat.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { UpdateChatDto, UpdateChatGroupDto } from './dto/update-chat.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
 
-import { ChatGroup, ChatMessage, ChatUser, ChatUserRole } from '@prisma/client';
+import { ChatMessage, ChatUserRole } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
@@ -49,6 +48,26 @@ export class ChatService {
     @Inject(forwardRef(() => ChatGateway))
     private readonly chatGateway: ChatGateway,
   ) {}
+
+  /**
+   * Get unique message dates (YYYY-MM-DD) for a chat
+   * @param chatId string
+   * @returns string[]
+   */
+  async getMessageDates(chatId: string): Promise<string[]> {
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { chatId },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const dateSet = new Set<string>();
+    dateSet.add(new Date().toISOString().slice(0, 10)); // Add epoch date
+    for (const msg of messages) {
+      const date = msg.createdAt.toISOString().slice(0, 10);
+      dateSet.add(date);
+    }
+    return Array.from(dateSet);
+  }
 
   /**
    * Get count of new (received but not seen) messages for each user in a chat
@@ -158,12 +177,22 @@ export class ChatService {
           : {}),
       },
     });
+
     const message = await this.prisma.chatMessage.findFirst({
       where: { id: status.messageId },
       include: {
         reactions: true,
         replies: true,
         userStatuses: true,
+      },
+    });
+    await this.prisma.chatUser.updateMany({
+      where: {
+        chatId: message?.chatId,
+        userId,
+      },
+      data: {
+        lastReadMessageId: message?.id,
       },
     });
 
@@ -181,7 +210,7 @@ export class ChatService {
       }
     }
 
-    return status;
+    return message;
   }
   async markUserOnline(userId: string): Promise<void> {
     // Get all chats for this user
@@ -300,6 +329,7 @@ export class ChatService {
             },
           },
           group: true,
+          blocks: true,
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 2,
@@ -317,38 +347,33 @@ export class ChatService {
       this.prisma.chat.count({ where }),
     ]);
 
-    const chatUsers: ChatUser[] = [];
-    const chatGroups: ChatGroup[] = [];
-    const chatMessages: ChatMessage[] = [];
-
     const newChats = await Promise.all(
       chats.map(async (chat) => {
         const countUnseenMessages = await this.getUnseenMessageCounts(
           chat.id,
           userId,
         );
-        chatUsers.push(...chat.users);
-        if (chat.group) chatGroups.push(chat.group);
-        chatMessages.push(...chat.messages);
 
+        // Group chat.messages by date in [{date, data: [...]}, ...] format
+        const grouped: { [date: string]: any[] } = {};
+        for (const msg of chat.messages) {
+          const date = msg.createdAt.toISOString().slice(0, 10);
+          if (!grouped[date]) grouped[date] = [];
+          grouped[date].push(msg);
+        }
+        const messagesWithDates = Object.entries(grouped).map(
+          ([date, msgs]) => ({ date, data: msgs }),
+        );
         return {
-          id: chat.id,
-          type: chat.type,
-          countUnseenMessages,
-          createdAt: chat.createdAt,
-          updatedAt: chat.updatedAt,
-          deletedAt: chat.deletedAt,
+          ...chat,
+          unseenMessageCounts: countUnseenMessages,
+          messagesWithDates,
         };
       }),
     );
 
     return {
-      data: {
-        chats: newChats,
-        users: chatUsers,
-        groups: chatGroups,
-        messages: chatMessages,
-      },
+      data: newChats,
       page,
       limit,
       total,
@@ -392,6 +417,7 @@ export class ChatService {
     const chat = await this.prisma.chat.create({
       data: {
         type: dto.type,
+        userId: userId,
         group:
           dto.type === 'GROUP'
             ? {
@@ -443,25 +469,78 @@ export class ChatService {
     return await this.prisma.chat.delete({ where: { id } });
   }
 
-  async getMessages(chatId: string, page = 1, limit = 20): Promise<any> {
-    const skip = (page - 1) * limit;
+  async getMessages(
+    userId: string,
+    chatId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<any> {
+    // For scroll pagination: always return all messages up to the current page
+    const take = page * limit;
+
+    // Get all block periods for this user in this chat
+    const blockPeriods = await this.prisma.chatBlock.findMany({
+      where: { chatId, userId },
+      select: { createdAt: true, deletedAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Build NOT filter for messages in block periods
+    let messageWhere: Record<string, any> = { chatId };
+    if (blockPeriods.length > 0) {
+      messageWhere = {
+        chatId,
+        NOT: blockPeriods.map((block) =>
+          block.deletedAt
+            ? {
+                createdAt: {
+                  gte: block.createdAt,
+                  lt: block.deletedAt,
+                },
+              }
+            : {
+                createdAt: {
+                  gte: block.createdAt,
+                },
+              },
+        ),
+      };
+    }
+
     const [messages, total] = await Promise.all([
       this.prisma.chatMessage.findMany({
-        where: { chatId },
+        where: messageWhere,
         orderBy: { createdAt: 'desc' },
         include: {
           reactions: true,
           replies: true,
           userStatuses: true,
         },
-        skip,
-        take: limit,
+        skip: 0,
+        take,
       }),
-      this.prisma.chatMessage.count({ where: { chatId } }),
+      this.prisma.chatMessage.count({ where: messageWhere }),
     ]);
 
+    // Group messages by date (YYYY-MM-DD) in the requested format, descending order
+    const grouped: { [date: string]: any[] } = {
+      [new Date().toISOString().slice(0, 10)]: [],
+    };
+    for (const msg of messages) {
+      const date = msg.createdAt.toISOString().slice(0, 10);
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(msg);
+    }
+
+    // Sort dates descending for scroll pagination (latest first)
+    const groupedArray = Object.entries(grouped).map(([date, msgs]) => ({
+      date,
+      data: msgs,
+    }));
+
     return {
-      data: messages,
+      data: groupedArray,
+      chatId,
       page,
       limit,
       total,
@@ -492,7 +571,20 @@ export class ChatService {
       where: { chatId, userId: { not: dto.senderId } },
       select: { userId: true },
     });
+
     for (const chatUser of chatUsers) {
+      // Check if this user has an active block (deletedAt is null) for this chat
+      const activeBlock = await this.prisma.chatBlock.findFirst({
+        where: {
+          chatId: chatId,
+          userId: chatUser.userId,
+          deletedAt: null,
+        },
+      });
+      if (activeBlock) {
+        // User has blocked this chat, skip sending message to this user
+        continue;
+      }
       // Upsert messageUserStatus for each user, ensure id is uuid
       await this.prisma.messageUserStatus.upsert({
         where: {
@@ -627,18 +719,26 @@ export class ChatService {
   async removeReply(messageId: string, replyId: string): Promise<any> {
     return await this.prisma.messageReply.delete({ where: { id: replyId } });
   }
+  async getBlockedUserChat(chatId: string, userId: string): Promise<any> {
+    const chats = await this.prisma.chatBlock.findMany({
+      where: { chatId, deletedAt: null, userId },
+    });
+    return chats[0];
+  }
 
-  async blockUser(chatId: string, dto: BlockUserDto): Promise<any> {
+  async blockUser(chatId: string, userId: string): Promise<any> {
     return await this.prisma.chatBlock.create({
       data: {
         chatId,
-        blockedBy: chatId, // Should be current userId in real use
-        blockedTo: dto.blockedTo,
+        userId,
       },
     });
   }
 
   async unblockUser(chatId: string, blockId: string): Promise<any> {
-    return await this.prisma.chatBlock.delete({ where: { id: blockId } });
+    return await this.prisma.chatBlock.update({
+      where: { id: blockId, chatId },
+      data: { deletedAt: new Date() },
+    });
   }
 }

@@ -66,7 +66,7 @@ export class ChatController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
   ) {
-    const userId = req.user.id;
+    const userId = req.user.id as string;
     return this.chatService.getChats({
       userId: userId || '',
       search,
@@ -127,6 +127,108 @@ export class ChatController {
     );
   }
 
+  @Put('messages/:messageId')
+  @ApiOperation({ summary: 'Update a message' })
+  @ApiParam({ name: 'messageId', required: true })
+  @ApiBody({
+    type: UpdateMessageDto,
+    examples: {
+      default: {
+        summary: 'Update message',
+        value: {
+          content: 'Updated message content',
+          // Add other fields as defined in UpdateMessageDto
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Message updated.', type: Object })
+  updateMessage(
+    @Param('messageId') messageId: string,
+    @Body() dto: UpdateMessageDto,
+  ) {
+    return this.chatService.updateMessage(messageId, dto);
+  }
+
+  @Delete('messages/:messageId')
+  @ApiOperation({ summary: 'Delete a message' })
+  @ApiParam({ name: 'messageId', required: true })
+  @ApiResponse({ status: 200, description: 'Message deleted.', type: Object })
+  deleteMessage(@Param('messageId') messageId: string) {
+    return this.chatService.deleteMessage(messageId);
+  }
+
+  // Chat reactions
+  @Post('messages/:messageId/reactions')
+  @ApiOperation({ summary: 'Add a reaction to a message' })
+  @ApiParam({ name: 'messageId', required: true })
+  @ApiBody({
+    type: AddReactionDto,
+    examples: {
+      default: {
+        summary: 'Add reaction',
+        value: {
+          userId: 'user-uuid-1',
+          emoji: '👍',
+          // Add other fields as defined in AddReactionDto
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Reaction added.', type: Object })
+  addReaction(
+    @Param('messageId') messageId: string,
+    @Body() dto: AddReactionDto,
+  ) {
+    return this.chatService.addReaction(messageId, dto);
+  }
+
+  @Delete('messages/:messageId/reactions/:reactionId')
+  @ApiOperation({ summary: 'Remove a reaction from a message' })
+  @ApiParam({ name: 'messageId', required: true })
+  @ApiParam({ name: 'reactionId', required: true })
+  @ApiResponse({ status: 200, description: 'Reaction removed.', type: Object })
+  removeReaction(
+    @Param('messageId') messageId: string,
+    @Param('reactionId') reactionId: string,
+  ) {
+    return this.chatService.removeReaction(messageId, reactionId);
+  }
+
+  // Chat replies
+  @Post('messages/:messageId/replies')
+  @ApiOperation({ summary: 'Add a reply to a message' })
+  @ApiParam({ name: 'messageId', required: true })
+  @ApiBody({
+    type: AddReplyDto,
+    examples: {
+      default: {
+        summary: 'Add reply',
+        value: {
+          userId: 'user-uuid-2',
+          content: 'This is a reply',
+          // Add other fields as defined in AddReplyDto
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Reply added.', type: Object })
+  addReply(@Param('messageId') messageId: string, @Body() dto: AddReplyDto) {
+    return this.chatService.addReply(messageId, dto);
+  }
+
+  @Delete('messages/:messageId/replies/:replyId')
+  @ApiOperation({ summary: 'Remove a reply from a message' })
+  @ApiParam({ name: 'messageId', required: true })
+  @ApiParam({ name: 'replyId', required: true })
+  @ApiResponse({ status: 200, description: 'Reply removed.', type: Object })
+  removeReply(
+    @Param('messageId') messageId: string,
+    @Param('replyId') replyId: string,
+  ) {
+    return this.chatService.removeReply(messageId, replyId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a chat by ID' })
   @ApiParam({ name: 'id', required: true })
@@ -151,9 +253,7 @@ export class ChatController {
   })
   @ApiResponse({ status: 201, description: 'Chat created.', type: Object })
   createChat(@Body() dto: CreateChatDto, @Request() req: any) {
-    console.log(req.user);
-
-    return this.chatService.createChat(dto, req.user.id);
+    return this.chatService.createChat(dto, req.user.id as string);
   }
 
   @Put(':id')
@@ -173,6 +273,19 @@ export class ChatController {
   @ApiResponse({ status: 200, description: 'Chat updated.', type: Object })
   updateChat(@Param('id') id: string, @Body() dto: UpdateChatDto) {
     return this.chatService.updateChat(id, dto);
+  }
+
+  @Get(':id/message-dates')
+  @ApiOperation({ summary: 'Get unique message dates for a chat' })
+  @ApiParam({ name: 'id', required: true })
+  @ApiResponse({
+    status: 200,
+    description: 'List of unique message dates.',
+    type: [String],
+  })
+  async getMessageDates(@Param('id') chatId: string) {
+    // This should return an array of unique dates (YYYY-MM-DD) for messages in the chat
+    return this.chatService.getMessageDates(chatId);
   }
 
   @Patch(':id/group')
@@ -230,11 +343,14 @@ export class ChatController {
     type: [Object],
   })
   getMessages(
+    @Request() req: any,
     @Param('id') chatId: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
   ) {
+    const userId = req.user.id as string;
     return this.chatService.getMessages(
+      userId,
       chatId,
       Number(page) || 1,
       Number(limit) || 20,
@@ -263,102 +379,19 @@ export class ChatController {
     return this.chatService.sendMessage(chatId, dto);
   }
 
-  @Put('messages/:messageId')
-  @ApiOperation({ summary: 'Update a message' })
-  @ApiParam({ name: 'messageId', required: true })
-  @ApiBody({
-    type: UpdateMessageDto,
-    examples: {
-      default: {
-        summary: 'Update message',
-        value: {
-          content: 'Updated message content',
-          // Add other fields as defined in UpdateMessageDto
-        },
-      },
-    },
+  // get chat blocks
+  @Get(':id/blocks')
+  @ApiOperation({ summary: 'Get blocked users in a chat' })
+  @ApiParam({ name: 'id', required: true })
+  @ApiResponse({
+    status: 200,
+    description: 'List of blocked users.',
+    type: [Object],
   })
-  @ApiResponse({ status: 200, description: 'Message updated.', type: Object })
-  updateMessage(@Param('messageId') messageId: string, @Body() dto: any) {
-    return this.chatService.updateMessage(messageId, dto);
+  getBlockedUsers(@Param('id') chatId: string, @Request() req: any) {
+    const userId = req.user.id as string;
+    return this.chatService.getBlockedUserChat(chatId, userId);
   }
-
-  @Delete('messages/:messageId')
-  @ApiOperation({ summary: 'Delete a message' })
-  @ApiParam({ name: 'messageId', required: true })
-  @ApiResponse({ status: 200, description: 'Message deleted.', type: Object })
-  deleteMessage(@Param('messageId') messageId: string) {
-    return this.chatService.deleteMessage(messageId);
-  }
-
-  // Chat reactions
-  @Post('messages/:messageId/reactions')
-  @ApiOperation({ summary: 'Add a reaction to a message' })
-  @ApiParam({ name: 'messageId', required: true })
-  @ApiBody({
-    type: AddReactionDto,
-    examples: {
-      default: {
-        summary: 'Add reaction',
-        value: {
-          userId: 'user-uuid-1',
-          emoji: '👍',
-          // Add other fields as defined in AddReactionDto
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 201, description: 'Reaction added.', type: Object })
-  addReaction(@Param('messageId') messageId: string, @Body() dto: any) {
-    return this.chatService.addReaction(messageId, dto);
-  }
-
-  @Delete('messages/:messageId/reactions/:reactionId')
-  @ApiOperation({ summary: 'Remove a reaction from a message' })
-  @ApiParam({ name: 'messageId', required: true })
-  @ApiParam({ name: 'reactionId', required: true })
-  @ApiResponse({ status: 200, description: 'Reaction removed.', type: Object })
-  removeReaction(
-    @Param('messageId') messageId: string,
-    @Param('reactionId') reactionId: string,
-  ) {
-    return this.chatService.removeReaction(messageId, reactionId);
-  }
-
-  // Chat replies
-  @Post('messages/:messageId/replies')
-  @ApiOperation({ summary: 'Add a reply to a message' })
-  @ApiParam({ name: 'messageId', required: true })
-  @ApiBody({
-    type: AddReplyDto,
-    examples: {
-      default: {
-        summary: 'Add reply',
-        value: {
-          userId: 'user-uuid-2',
-          content: 'This is a reply',
-          // Add other fields as defined in AddReplyDto
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 201, description: 'Reply added.', type: Object })
-  addReply(@Param('messageId') messageId: string, @Body() dto: any) {
-    return this.chatService.addReply(messageId, dto);
-  }
-
-  @Delete('messages/:messageId/replies/:replyId')
-  @ApiOperation({ summary: 'Remove a reply from a message' })
-  @ApiParam({ name: 'messageId', required: true })
-  @ApiParam({ name: 'replyId', required: true })
-  @ApiResponse({ status: 200, description: 'Reply removed.', type: Object })
-  removeReply(
-    @Param('messageId') messageId: string,
-    @Param('replyId') replyId: string,
-  ) {
-    return this.chatService.removeReply(messageId, replyId);
-  }
-
   // Chat blocks
   @Post(':id/blocks')
   @ApiOperation({ summary: 'Block a user in a chat' })
@@ -377,8 +410,9 @@ export class ChatController {
     },
   })
   @ApiResponse({ status: 201, description: 'User blocked.', type: Object })
-  blockUser(@Param('id') chatId: string, @Body() dto: any) {
-    return this.chatService.blockUser(chatId, dto);
+  blockUser(@Param('id') chatId: string, @Request() req: any) {
+    const userId = req.user.id as string;
+    return this.chatService.blockUser(chatId, userId);
   }
 
   @Delete(':id/blocks/:blockId')
