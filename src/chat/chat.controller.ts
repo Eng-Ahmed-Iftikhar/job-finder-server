@@ -30,6 +30,7 @@ import { CreateChatDto } from './dto/create-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateChatDto, UpdateChatGroupDto } from './dto/update-chat.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
+import { MuteUserDto } from './dto/mute-user.dto';
 
 @ApiTags('Chat')
 @Controller('chats')
@@ -410,9 +411,8 @@ export class ChatController {
     },
   })
   @ApiResponse({ status: 201, description: 'User blocked.', type: Object })
-  blockUser(@Param('id') chatId: string, @Request() req: any) {
-    const userId = req.user.id as string;
-    return this.chatService.blockUser(chatId, userId);
+  blockUser(@Param('id') chatId: string, @Body() dto: BlockUserDto) {
+    return this.chatService.blockUser(chatId, dto);
   }
 
   @Delete(':id/blocks/:blockId')
@@ -422,5 +422,23 @@ export class ChatController {
   @ApiResponse({ status: 200, description: 'User unblocked.', type: Object })
   unblockUser(@Param('id') chatId: string, @Param('blockId') blockId: string) {
     return this.chatService.unblockUser(chatId, blockId);
+  }
+  // mute user in chat
+  @Post(':id/mute')
+  @ApiOperation({ summary: 'Update a chat user (mute/unmute, role)' })
+  @ApiParam({ name: 'id', required: true })
+  @ApiParam({ name: 'userId', required: true })
+  @ApiResponse({ status: 200, description: 'Chat user updated.', type: Object })
+  updateChatUser(@Param('id') chatId: string, @Body() dto: MuteUserDto) {
+    return this.chatService.muteUser(chatId, dto);
+  }
+  // end mute user in chat
+  @Delete(':id/mute/:mutedId')
+  @ApiOperation({ summary: 'Unmute a user in a chat' })
+  @ApiParam({ name: 'id', required: true })
+  @ApiParam({ name: 'mutedId', required: true })
+  @ApiResponse({ status: 200, description: 'User unmuted.', type: Object })
+  unmuteUser(@Param('id') chatId: string, @Param('mutedId') mutedId: string) {
+    return this.chatService.unmuteUser(chatId, mutedId);
   }
 }

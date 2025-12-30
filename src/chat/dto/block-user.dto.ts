@@ -5,5 +5,5 @@ export class BlockUserDto {
   @ApiProperty({ example: 'userIdToBlock' })
   @IsString()
   @IsNotEmpty()
-  blockedTo: string;
+  userId: string;
 }

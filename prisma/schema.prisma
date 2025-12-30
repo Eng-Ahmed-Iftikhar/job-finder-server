@@ -1,3 +1,4 @@
+
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
@@ -537,6 +538,7 @@ model Chat {
   group     ChatGroup?
   messages  ChatMessage[]
   blocks    ChatBlock[]
+  mutes     ChatMute[]
   user      User      @relation("UserChats", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("chats")
@@ -556,6 +558,7 @@ model ChatUser {
   // Relations
   chat      Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mutes     ChatMute[]
   // messageStatuses relation removed because MessageUserStatus no longer references ChatUser
   lastReadMessage ChatMessage? @relation("LastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
 
@@ -684,5 +687,20 @@ enum MessageType {
 enum MessageStatus {
   SENT
   FAILED
+}
+
+// Chat mutes table
+model ChatMute {
+  id         String   @id @default(uuid())
+  chatId     String   @map("chat_id")
+  chatUserId String   @map("chat_user_id")
+  mutedTill  DateTime? @map("muted_till")
+  deletedAt  DateTime? @map("deleted_at")
+
+  // Relations
+  chat       Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatUser   ChatUser  @relation(fields: [chatUserId], references: [id], onDelete: Cascade)
+
+  @@map("chat_mutes")
 }
 
