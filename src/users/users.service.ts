@@ -247,7 +247,7 @@ export class UsersService {
         email: true,
         profile: {
           include: {
-            phoneNumbers: { include: { phoneNumber: true } },
+            userPhoneNumbers: { include: { phoneNumber: true } },
             location: true,
           },
         },
@@ -281,8 +281,8 @@ export class UsersService {
         address: profile.address ?? '',
       },
       phoneNumber:
-        user.profile.phoneNumbers.length > 0
-          ? user.profile.phoneNumbers[0].phoneNumber
+        user.profile.userPhoneNumbers.length > 0
+          ? (user.profile.userPhoneNumbers[0].phoneNumber as any)
           : undefined,
       pictureUrl: profile.pictureUrl ?? undefined,
       resumeUrl: profile.resumeUrl ?? undefined,
@@ -664,7 +664,7 @@ export class UsersService {
     const profile = await this.prisma.profile.findUnique({
       where: { userId },
       include: {
-        phoneNumbers: { include: { phoneNumber: true } },
+        userPhoneNumbers: { include: { phoneNumber: true } },
         location: true,
       },
     });
@@ -729,7 +729,7 @@ export class UsersService {
       where: { userId },
       data: { ...updateData, ...(locationId && { locationId }) },
       include: {
-        phoneNumbers: { include: { phoneNumber: true } },
+        userPhoneNumbers: { include: { phoneNumber: true } },
         location: true,
       },
     });

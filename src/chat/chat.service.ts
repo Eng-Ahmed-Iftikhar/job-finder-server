@@ -1,4 +1,9 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  forwardRef,
+} from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from './chat.gateway';
@@ -10,7 +15,6 @@ import { UpdateChatDto, UpdateChatGroupDto } from './dto/update-chat.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 
 import { ChatMessage, ChatUserRole } from '@prisma/client';
-import { BlockUserDto } from './dto/block-user.dto';
 import { MuteUserDto } from './dto/mute-user.dto';
 
 @Injectable()
@@ -81,24 +85,27 @@ export class ChatService {
     chatId: string,
     userId: string,
   ): Promise<{ senderId: string; count: number }[]> {
-    // Find all block periods for this user in this chat
+    // Find all block periods for this user in this chat (ChatBlock now uses chatUserId)
+    const chatUser = await this.prisma.chatUser.findFirst({
+      where: { chatId, userId },
+    });
     const blockPeriods = await this.prisma.chatBlock.findMany({
-      where: { chatId, NOT: { userId } },
-      select: { createdAt: true, deletedAt: true, userId: true },
+      where: { chatId, NOT: { chatUserId: chatUser?.id } },
+      select: { createdAt: true, deletedAt: true, chatUserId: true },
       orderBy: { createdAt: 'asc' },
     });
 
-    // Build NOT filter for messages in block periods and exclude messages from a specific user within the time frame
+    // Build NOT filter for messages in block periods and exclude messages from a specific chat user within the time frame
     let messageWhere: Record<string, any> = {
       chatId,
-      senderId: { not: userId },
+      senderId: { not: chatUser?.id },
     };
     if (blockPeriods.length > 0) {
       messageWhere = {
         chatId,
-        senderId: { not: userId },
+        senderId: { not: chatUser?.id },
         NOT: blockPeriods
-          .filter((block) => block.userId !== userId)
+          .filter((block) => block.chatUserId !== chatUser?.id)
           .map((block) => {
             const baseFilter = block.deletedAt
               ? {
@@ -112,10 +119,10 @@ export class ChatService {
                     gte: block.createdAt,
                   },
                 };
-            // Exclude messages from the blocked user in the time frame
+            // Exclude messages from the blocked chat user in the time frame
             return {
               ...baseFilter,
-              senderId: block.userId,
+              senderId: block?.chatUserId as string,
             };
           }),
       };
@@ -348,6 +355,7 @@ export class ChatService {
       ];
     }
 
+    // The deletedChats filter should use only the chatUser for the current chat and user
     const where: Record<string, any> = {
       users: {
         some: { userId },
@@ -384,6 +392,17 @@ export class ChatService {
 
     const newChats = await Promise.all(
       chats.map(async (chat) => {
+        const chatUser = chat.users.find((u) => u.userId === userId);
+        const deletedChat = await this.prisma.deletedChat.findFirst({
+          where: {
+            chatId: chat?.id as string,
+            chatUser: { id: chatUser?.id as string },
+            deletedAt: { equals: null },
+          },
+        });
+        if (deletedChat) {
+          return null; // Exclude this chat
+        }
         const unseenMessageCounts = await this.getUnseenMessageCounts(
           chat.id,
           userId,
@@ -395,7 +414,7 @@ export class ChatService {
           messageWhere = {
             chatId: chat.id,
             NOT: blockPeriods
-              .filter((block) => block.userId !== userId) // Only apply block if the current user is NOT the blocker
+              .filter((block) => block.chatUserId !== chatUser?.id) // Only apply block if the current user is NOT the blocker
               .map((block) => {
                 const baseFilter = block.deletedAt
                   ? {
@@ -412,7 +431,7 @@ export class ChatService {
                 // Exclude messages from the blocked user in the time frame
                 return {
                   ...baseFilter,
-                  senderId: block.userId,
+                  senderId: block.chatUserId as string,
                 };
               }),
           };
@@ -449,7 +468,7 @@ export class ChatService {
     );
 
     return {
-      data: newChats,
+      data: newChats.filter(Boolean),
       page,
       limit,
       total,
@@ -493,7 +512,6 @@ export class ChatService {
     const chat = await this.prisma.chat.create({
       data: {
         type: dto.type,
-        userId: userId,
         group:
           dto.type === 'GROUP'
             ? {
@@ -540,9 +558,31 @@ export class ChatService {
       },
     });
   }
+  async deleteGroup(id: string): Promise<any> {
+    return await this.prisma.chatGroup.update({
+      where: { chatId: id },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+  }
 
-  async deleteChat(id: string): Promise<any> {
-    return await this.prisma.chat.delete({ where: { id } });
+  async deleteChat(id: string, userId: string): Promise<any> {
+    // Get the chatUser record for this chat and user
+    const chatUser = await this.prisma.chatUser.findFirst({
+      where: { chatId: id, userId },
+    });
+    if (!chatUser) {
+      throw new Error('ChatUser not found for this chat and user');
+    }
+    return await this.prisma.deletedChat.upsert({
+      where: { chatId: id, chatUserId: chatUser.id },
+      update: { deletedAt: new Date() },
+      create: {
+        chatId: id,
+        chatUserId: chatUser.id,
+      },
+    });
   }
 
   async getMessages(
@@ -554,14 +594,17 @@ export class ChatService {
     // For scroll pagination: always return all messages up to the current page
     const take = page * limit;
 
-    // Get all block periods for this user in this chat
+    const chatUser = await this.prisma.chatUser.findFirst({
+      where: { chatId, userId },
+    });
+    // Get all block periods for this user in this chat (ChatBlock now uses chatUserId)
     const blockPeriods = await this.prisma.chatBlock.findMany({
-      where: { chatId, NOT: { userId } },
-      select: { createdAt: true, deletedAt: true, userId: true },
+      where: { chatId, NOT: { chatUserId: chatUser?.id } },
+      select: { createdAt: true, deletedAt: true, chatUserId: true },
       orderBy: { createdAt: 'asc' },
     });
 
-    // Build NOT filter for messages in block periods and exclude messages from a specific user within the time frame
+    // Build NOT filter for messages in block periods and exclude messages from a specific chat user within the time frame
     let messageWhere: Record<string, any> = { chatId };
     if (blockPeriods.length > 0) {
       messageWhere = {
@@ -579,10 +622,10 @@ export class ChatService {
                   gte: block.createdAt,
                 },
               };
-          // Exclude messages from the blocked user in the time frame
+          // Exclude messages from the blocked chat user in the time frame
           return {
             ...baseFilter,
-            senderId: block.userId,
+            senderId: block.chatUserId as string,
           };
         }),
       };
@@ -657,7 +700,7 @@ export class ChatService {
     const activeBlock = await this.prisma.chatBlock.findFirst({
       where: {
         chatId: chatId,
-        userId: dto.senderId,
+        chatUserId: dto.senderId,
         deletedAt: null,
       },
     });
@@ -803,19 +846,28 @@ export class ChatService {
     return await this.prisma.messageReply.delete({ where: { id: replyId } });
   }
   async getBlockedUserChat(chatId: string, userId: string): Promise<any> {
+    const chatUser = await this.prisma.chatUser.findFirst({
+      where: { chatId, userId },
+    });
     const chats = await this.prisma.chatBlock.findMany({
-      where: { chatId, deletedAt: null, userId },
+      where: { chatId, deletedAt: null, chatUserId: chatUser?.id as string },
     });
     return chats[0];
   }
 
-  async blockUser(chatId: string, dto: BlockUserDto): Promise<any> {
-    return await this.prisma.chatBlock.create({
-      data: {
-        chatId,
-        userId: dto.userId,
-      },
+  async blockUser(chatId: string, userId: string): Promise<any> {
+    const chatUsers = await this.prisma.chatUser.findMany({
+      where: { chatId, NOT: { userId } },
     });
+
+    for (const chatUser of chatUsers) {
+      return await this.prisma.chatBlock.create({
+        data: {
+          chatId,
+          chatUserId: chatUser?.id,
+        },
+      });
+    }
   }
   async muteUser(chatId: string, dto: MuteUserDto): Promise<any> {
     return await this.prisma.chatMute.create({

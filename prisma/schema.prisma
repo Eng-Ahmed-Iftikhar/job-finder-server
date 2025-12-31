@@ -37,12 +37,10 @@ model User {
   employeeJobs    JobEmployee[]
   savedJobs       SavedJob[]
   chatUsers ChatUser[]
-  sentMessages ChatMessage[] @relation("SentMessages")
   messageReactions MessageReaction[]
   messageReplies MessageReply[]
   messageUserStatuses MessageUserStatus[]
-  chatBlocks ChatBlock[]
-  chats        Chat[]    @relation("UserChats")
+    // chatBlocks relation removed as userId is no longer in ChatBlock
 
   @@map("users")
 }
@@ -100,12 +98,13 @@ model Profile {
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  phoneNumbers UserPhoneNumber[]
   experiences Experience[]
   educations Education[]
   profileSkills ProfileSkill[]
   notificationSettings NotificationSetting?
   location    Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  userPhoneNumbers UserPhoneNumber[]
 
   @@map("profiles")
 }
@@ -528,7 +527,6 @@ enum JobEmployeeStatus {
 model Chat {
   id        String   @id @default(uuid())
   type      ChatType
-  userId    String   @map("user_id") // Creator/owner of the chat
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -537,14 +535,14 @@ model Chat {
   users     ChatUser[]
   group     ChatGroup?
   messages  ChatMessage[]
-  blocks    ChatBlock[]
+    blocks    ChatBlock[] @relation("ChatBlocks")
   mutes     ChatMute[]
-  user      User      @relation("UserChats", fields: [userId], references: [id], onDelete: Cascade)
-
+    deletedChats DeletedChat[] @relation("DeletedChatsOnChat")
   @@map("chats")
 }
 
 model ChatUser {
+
   id        String   @id @default(uuid())
   chatId    String  @map("chat_id")
   userId    String  @map("user_id")
@@ -558,10 +556,13 @@ model ChatUser {
   // Relations
   chat      Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentMessages ChatMessage[] @relation("sender")
   mutes     ChatMute[]
   // messageStatuses relation removed because MessageUserStatus no longer references ChatUser
   lastReadMessage ChatMessage? @relation("LastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
-
+    deletedChats DeletedChat[] @relation("DeletedChatsOnChatUser")
+  blocks    ChatBlock[] @relation("ChatBlocks")
+  chatBlocks ChatBlock[] @relation("ChatUserChatBlocks")
   @@unique([chatId, userId])
   @@map("chat_users")
 }
@@ -594,7 +595,7 @@ model ChatMessage {
 
   // Relations
   chat        Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender      User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  sender      ChatUser   @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
   lastReadByUsers ChatUser[] @relation("LastReadMessage")
   userStatuses MessageUserStatus[]
   reactions   MessageReaction[]
@@ -655,14 +656,15 @@ model MessageUserStatus {
 
 model ChatBlock {
   id         String   @id @default(uuid())
-  chatId     String?  @map("chat_id")
+  chatUserId String   @map("chat_user_id")
+  chatId     String   @map("chat_id")
   createdAt  DateTime @default(now()) @map("created_at")
   deletedAt  DateTime? @map("deleted_at")
 
   // Relations
-  userId     String   @map("user_id")
-  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chat       Chat?  @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  chatUser   ChatUser @relation("ChatUserChatBlocks", fields: [chatUserId], references: [id], onDelete: Cascade, map: "chat_blocks_chat_user_id_fkey")
+  chat       Chat     @relation("ChatBlocks", fields: [chatId], references: [id], onDelete: Cascade, map: "chat_blocks_chat_id_fkey")
+  chatUserBlocks ChatUser? @relation("ChatBlocks", fields: [chatUserId], references: [id], onDelete: Cascade, map: "chat_blocks_chat_user_blocks_id_fkey")
 
   @@map("chat_blocks")
 }
@@ -702,5 +704,22 @@ model ChatMute {
   chatUser   ChatUser  @relation(fields: [chatUserId], references: [id], onDelete: Cascade)
 
   @@map("chat_mutes")
+}
+
+// Table to track deleted chats per user
+model DeletedChat {
+  id         String   @id @default(uuid())
+  chatId     String   @map("chat_id")
+  chatUserId String   @map("chat_user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  // Relations
+    chat      Chat     @relation("DeletedChatsOnChat", fields: [chatId], references: [id], onDelete: Cascade)
+    chatUser  ChatUser @relation("DeletedChatsOnChatUser", fields: [chatUserId], references: [id], onDelete: Cascade)
+
+  @@map("deleted_chats")
+  @@unique([chatId])
 }
 

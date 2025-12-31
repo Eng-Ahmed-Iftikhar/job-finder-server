@@ -311,13 +311,24 @@ export class ChatController {
   updateGroup(@Param('id') id: string, @Body() dto: UpdateChatGroupDto) {
     return this.chatService.updateGroup(id, dto);
   }
+  // Delete chat group
+  @Delete(':id/group')
+  @ApiOperation({
+    summary: 'Delete group details (name, description, iconUrl)',
+  })
+  @ApiParam({ name: 'id', required: true })
+  @ApiResponse({ status: 200, description: 'Group deleted.', type: Object })
+  deleteGroup(@Param('id') id: string) {
+    return this.chatService.deleteGroup(id);
+  }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a chat' })
   @ApiParam({ name: 'id', required: true })
   @ApiResponse({ status: 200, description: 'Chat deleted.', type: Object })
-  deleteChat(@Param('id') id: string) {
-    return this.chatService.deleteChat(id);
+  deleteChat(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user.id as string;
+    return this.chatService.deleteChat(id, userId);
   }
 
   // Chat messages
@@ -411,8 +422,9 @@ export class ChatController {
     },
   })
   @ApiResponse({ status: 201, description: 'User blocked.', type: Object })
-  blockUser(@Param('id') chatId: string, @Body() dto: BlockUserDto) {
-    return this.chatService.blockUser(chatId, dto);
+  async blockUser(@Param('id') chatId: string, @Request() req: any) {
+    const userId = req.user.id as string;
+    return this.chatService.blockUser(chatId, userId);
   }
 
   @Delete(':id/blocks/:blockId')
