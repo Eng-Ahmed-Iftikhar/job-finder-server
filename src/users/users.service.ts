@@ -21,7 +21,6 @@ import {
   UserEmailResponseDto,
   UserWithProfileResponseDto,
 } from '../auth/dto/user-response.dto';
-import { Profile } from '../types/user.types';
 
 @Injectable()
 export class UsersService {
@@ -265,151 +264,6 @@ export class UsersService {
       throw new BadRequestException('User profile not found');
     }
 
-    // Transform the response to match the new UserProfile structure
-    const profile = user.profile as unknown as Profile; // Non-null assertion after check
-    const userProfile: ProfileResponseDto = {
-      id: profile.id,
-      generalInfo: {
-        firstName: profile.firstName ?? '',
-        lastName: profile.lastName ?? '',
-      },
-      location: {
-        id: profile.location?.id ?? undefined,
-        city: profile.location?.city ?? '',
-        state: profile.location?.state ?? '',
-        country: profile.location?.country ?? '',
-        address: profile.address ?? '',
-      },
-      phoneNumber:
-        user.profile.userPhoneNumbers.length > 0
-          ? (user.profile.userPhoneNumbers[0].phoneNumber as any)
-          : undefined,
-      pictureUrl: profile.pictureUrl ?? undefined,
-      resumeUrl: profile.resumeUrl ?? undefined,
-      role: profile.role,
-      isOnboarded: profile.isOnboarded ?? false,
-      createdAt: profile.createdAt,
-      updatedAt: profile.updatedAt,
-    };
-
-    // Updated: Fetch connections where the connectionRequest involves this user
-    const connections = await this.prisma.connection.findMany({
-      where: {
-        connectionRequest: {
-          status: 'ACCEPTED',
-          OR: [{ senderId: userId }, { receiverId: userId }],
-        },
-      },
-      include: {
-        connectionRequest: {
-          include: {
-            sender: { include: { profile: { include: { location: true } } } },
-            receiver: { include: { profile: { include: { location: true } } } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const pendingConnections = await this.prisma.connection.findMany({
-      where: {
-        connectionRequest: {
-          status: 'PENDING',
-          OR: [{ senderId: userId }, { receiverId: userId }],
-        },
-      },
-      include: {
-        connectionRequest: {
-          include: {
-            sender: { include: { profile: { include: { location: true } } } },
-            receiver: { include: { profile: { include: { location: true } } } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    const pendingConnectionsSummaries = pendingConnections.map((c) => {
-      const otherUser =
-        c.connectionRequest?.senderId === userId
-          ? c.connectionRequest?.receiver
-          : c.connectionRequest?.sender;
-      return {
-        id: c.id,
-        user: {
-          id: otherUser?.id,
-          firstName: otherUser?.profile?.firstName,
-          lastName: otherUser?.profile?.lastName,
-          pictureUrl: otherUser?.profile?.pictureUrl,
-          role: otherUser?.profile?.role,
-          location: otherUser?.profile?.location,
-        },
-        connectionRequestId: c.connectionRequestId,
-        status: c.connectionRequest?.status,
-      };
-    });
-    // Provide summary with the other user's id
-    const connectionSummaries = connections.map((c) => {
-      const otherUser =
-        c.connectionRequest?.senderId === userId
-          ? c.connectionRequest?.receiver
-          : c.connectionRequest?.sender;
-      return {
-        id: c.id,
-        user: {
-          id: otherUser?.id,
-          firstName: otherUser?.profile?.firstName,
-          lastName: otherUser?.profile?.lastName,
-          pictureUrl: otherUser?.profile?.pictureUrl,
-          role: otherUser?.profile?.role,
-          location: otherUser?.profile?.location,
-        },
-        connectionRequestId: c.connectionRequestId,
-        status: c.connectionRequest?.status,
-      };
-    });
-
-    const followedCompanies = await this.prisma.companyFollower.findMany({
-      where: { followerId: userId },
-      include: {
-        company: {
-          include: {
-            profile: {
-              include: {
-                location: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const followedCompaniesSummaries = followedCompanies.map((fc) => ({
-      id: fc.company.id,
-      name: fc.company.name,
-      address: fc.company.profile?.address ?? null,
-      pictureUrl: fc.company.profile?.pictureUrl ?? null,
-      location: fc.company.profile?.location
-        ? {
-            city: fc.company.profile.location.city,
-            state: fc.company.profile.location.state,
-            country: fc.company.profile.location.country,
-          }
-        : null,
-    }));
-
-    const savedJobIds = await this.prisma.savedJob.findMany({
-      where: { employeeId: userId },
-      select: { jobId: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const appliedJobIds = await this.prisma.jobEmployee.findMany({
-      where: { employeeId: userId },
-      select: { jobId: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
     return {
       user: {
         id: user.id,
@@ -418,12 +272,7 @@ export class UsersService {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      profile: userProfile as never,
-      connections: connectionSummaries as never,
-      pendingConnections: pendingConnectionsSummaries as never,
-      followedCompanies: followedCompaniesSummaries,
-      savedJobIds: savedJobIds.map((s) => s.jobId),
-      appliedJobIds: appliedJobIds.map((a) => a.jobId),
+      profile: user.profile as unknown as ProfileResponseDto,
     };
   }
 

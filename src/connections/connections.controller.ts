@@ -7,6 +7,7 @@ import {
   Post,
   Request,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -70,9 +71,23 @@ export class ConnectionsController {
     },
   })
   @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
-  listMine(@Request() req: any) {
+  async listMine(
+    @Request() req: any,
+    @Query('page') page?: number,
+    @Query('pageSize') pageSize?: number,
+    @Query('search') search?: string,
+  ) {
     const userId = req.user?.id as string;
-    return this.connectionsService.listMine(userId);
+    return this.connectionsService.listMine(userId, { page, pageSize, search });
+  }
+
+  @Get('count/me')
+  @ApiOperation({ summary: 'Get count of my connections' })
+  @ApiOkResponse({ schema: { type: 'number' } })
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  async countMine(@Request() req: any) {
+    const userId = req.user?.id as string;
+    return this.connectionsService.countMine(userId);
   }
 
   @Get(':id')

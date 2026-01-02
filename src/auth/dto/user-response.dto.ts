@@ -50,12 +50,11 @@ export class ProfileResponseDto {
   @ApiProperty({ description: 'Profile ID' })
   id: string;
 
-  @ApiProperty({
-    description: 'General user information',
-    type: UserGeneralInfoResponseDto,
-    required: false,
-  })
-  generalInfo?: UserGeneralInfoResponseDto;
+  @ApiProperty({ description: 'firstName' })
+  firstName: string;
+
+  @ApiProperty({ description: 'lastName' })
+  lastName: string;
 
   @ApiProperty({
     description: 'Location information',

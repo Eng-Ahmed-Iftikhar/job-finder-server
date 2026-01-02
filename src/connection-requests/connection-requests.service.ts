@@ -1,11 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConnectionRequestDto } from './dto/create-connection-request.dto';
 import { UpdateConnectionRequestDto } from './dto/update-connection-request.dto';
+import { ConnectionRequestGateway } from './connection-request.gateway';
 
 @Injectable()
 export class ConnectionRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ConnectionRequestGateway))
+    private readonly connectionRequestGateway: ConnectionRequestGateway,
+  ) {}
 
   async create(senderId: string, dto: CreateConnectionRequestDto) {
     // Ensure sender and receiver exist
@@ -43,11 +53,126 @@ export class ConnectionRequestsService {
     await this.ensureExists(id);
     return this.prisma.connectionRequest.update({ where: { id }, data: dto });
   }
-  async findEmployeeRequests(employeeId: string) {
-    return this.prisma.connectionRequest.findMany({
-      where: { senderId: employeeId, status: 'PENDING' },
-      orderBy: { createdAt: 'desc' },
+  async findEmployeeRequests(
+    employeeId: string,
+    params: {
+      page?: number;
+      pageSize?: number;
+      search?: string;
+      status?: string;
+    },
+  ) {
+    const page = Math.max(1, params.page ?? 1);
+    const take = Math.max(1, params.pageSize ?? 10);
+    const skip = Math.max(0, (page - 1) * take);
+    const statusFilter = params.status?.toUpperCase();
+    const directionFilter =
+      statusFilter === 'INBOUND'
+        ? { receiverId: employeeId }
+        : statusFilter === 'OUTBOUND'
+          ? { senderId: employeeId }
+          : { OR: [{ senderId: employeeId }, { receiverId: employeeId }] };
+
+    const searchFilter = params.search
+      ? {
+          OR: [
+            {
+              sender: {
+                profile: {
+                  OR: [
+                    {
+                      firstName: {
+                        contains: params.search,
+                        mode: 'insensitive',
+                      },
+                    },
+                    {
+                      lastName: {
+                        contains: params.search,
+                        mode: 'insensitive',
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              receiver: {
+                profile: {
+                  OR: [
+                    {
+                      firstName: {
+                        contains: params.search,
+                        mode: 'insensitive',
+                      },
+                    },
+                    {
+                      lastName: {
+                        contains: params.search,
+                        mode: 'insensitive',
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              sender: {
+                email: { contains: params.search, mode: 'insensitive' },
+              },
+            },
+            {
+              receiver: {
+                email: { contains: params.search, mode: 'insensitive' },
+              },
+            },
+          ],
+        }
+      : {};
+
+    const where: Record<string, any> = {
+      AND: [{ status: 'PENDING' }, directionFilter, searchFilter],
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.connectionRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          sender: {
+            include: { profile: { include: { location: true } }, email: true },
+          },
+          receiver: {
+            include: { profile: { include: { location: true } }, email: true },
+          },
+        },
+      }),
+      this.prisma.connectionRequest.count({ where }),
+    ]);
+
+    const dataWithDirection = data.map((request) => ({
+      ...request,
+      direction: request.senderId === employeeId ? 'OUTBOUND' : 'INBOUND',
+    }));
+
+    return {
+      data: dataWithDirection,
+      total,
+      page,
+      pageSize: take,
+      totalPages: Math.ceil(total / take),
+    };
+  }
+  async countMine(userId: string) {
+    const count = await this.prisma.connectionRequest.count({
+      where: {
+        OR: [{ senderId: userId }, { receiverId: userId }],
+        status: 'PENDING',
+      },
     });
+    return count;
   }
   async remove(id: string) {
     await this.ensureExists(id);
@@ -66,6 +191,30 @@ export class ConnectionRequestsService {
         connectionRequestId: req.id,
       },
     });
+    const connectionRequestsCount = await this.prisma.connectionRequest.count({
+      where: {
+        OR: [{ senderId: req.senderId }, { receiverId: req.senderId }],
+        status: 'PENDING',
+      },
+    });
+    const connectionCounts = await this.prisma.connection.count({
+      where: {
+        OR: [
+          { connectionRequest: { senderId: req.senderId } },
+          { connectionRequest: { receiverId: req.senderId } },
+        ],
+      },
+    });
+
+    this.connectionRequestGateway.handleConnectionRequestCount(
+      req.senderId,
+      connectionRequestsCount,
+    );
+    this.connectionRequestGateway.handleConnectionCount(
+      req.senderId,
+      connectionCounts,
+    );
+
     return {
       id: req.id,
       status: req.status,
@@ -74,6 +223,29 @@ export class ConnectionRequestsService {
       updatedAt: req.updatedAt,
       user: req.sender,
     };
+  }
+
+  async rejectRequest(id: string) {
+    await this.ensureExists(id);
+    const req = await this.prisma.connectionRequest.update({
+      where: { id },
+      data: { status: 'REJECTED' },
+      include: { sender: true },
+    });
+
+    const connectionRequestsCount = await this.prisma.connectionRequest.count({
+      where: {
+        OR: [{ senderId: req.senderId }, { receiverId: req.senderId }],
+        status: 'PENDING',
+      },
+    });
+
+    this.connectionRequestGateway.handleConnectionRequestCount(
+      req.senderId,
+      connectionRequestsCount,
+    );
+
+    return req;
   }
 
   private async ensureExists(id: string) {
