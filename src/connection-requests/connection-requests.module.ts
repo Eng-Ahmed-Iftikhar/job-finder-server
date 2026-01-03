@@ -1,13 +1,18 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+
 import { ConnectionRequestsService } from './connection-requests.service';
 import { ConnectionRequestsController } from './connection-requests.controller';
-import { ConnectionRequestGateway } from './connection-request.gateway';
+import { SocketModule } from 'src/socket/socket.module';
 
 @Module({
-  imports: [PrismaModule],
-  providers: [ConnectionRequestsService, ConnectionRequestGateway],
+  imports: [
+    PrismaModule,
+    SocketModule,
+    forwardRef(() => ConnectionRequestsModule),
+  ],
+  providers: [ConnectionRequestsService],
   controllers: [ConnectionRequestsController],
-  exports: [ConnectionRequestsService, ConnectionRequestGateway],
+  exports: [ConnectionRequestsService],
 })
 export class ConnectionRequestsModule {}

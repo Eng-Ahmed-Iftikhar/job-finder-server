@@ -1,12 +1,7 @@
-import {
-  Inject,
-  Injectable,
-  NotFoundException,
-  forwardRef,
-} from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChatGateway } from './chat.gateway';
+
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { AddReplyDto } from './dto/add-reply.dto';
 import { CreateChatDto } from './dto/create-chat.dto';
@@ -16,9 +11,15 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 
 import { ChatMessage, ChatUserRole } from '@prisma/client';
 import { MuteUserDto } from './dto/mute-user.dto';
+import { SocketService } from 'src/socket/socket.service';
 
 @Injectable()
 export class ChatService {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => SocketService))
+    private readonly socketService: SocketService,
+  ) {}
   /**
    * Get all messages for the user that are not received
    * @param userId string
@@ -49,11 +50,6 @@ export class ChatService {
     // Return the messages
     return statuses.map((status) => status.message);
   }
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => ChatGateway))
-    private readonly chatGateway: ChatGateway,
-  ) {}
 
   /**
    * Get unique message dates (YYYY-MM-DD) for a chat
@@ -200,7 +196,7 @@ export class ChatService {
 
     for (const user of users) {
       if (userId !== user.userId) {
-        this.chatGateway.handleMessageReceived(user.userId, message);
+        this.socketService.handleMessageReceived(user.userId, message);
       }
     }
     return message;
@@ -256,7 +252,7 @@ export class ChatService {
 
     for (const user of users) {
       if (userId !== user.userId) {
-        this.chatGateway.handleMessageSeen(user.userId, message);
+        this.socketService.handleMessageSeen(user.userId, message);
       }
     }
 
@@ -531,7 +527,7 @@ export class ChatService {
       },
     });
     dto.userIds.forEach((id) => {
-      this.chatGateway.handleNewChat(id, chat);
+      this.socketService.handleNewChat(id, chat);
     });
     return chat;
   }
@@ -735,7 +731,7 @@ export class ChatService {
         },
       })) as ChatMessage;
 
-      this.chatGateway.handleNewMessage(chatUser.userId, message);
+      this.socketService.handleNewMessage(chatUser.userId, message);
     }
     return message;
   }

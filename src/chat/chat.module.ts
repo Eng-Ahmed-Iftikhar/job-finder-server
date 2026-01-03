@@ -1,13 +1,13 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
-import { ChatGateway } from './chat.gateway';
+
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [PrismaModule, forwardRef(() => ChatModule)],
-  providers: [ChatService, ChatGateway],
+  providers: [ChatService],
   controllers: [ChatController],
-  exports: [ChatService, ChatGateway],
+  exports: [ChatService],
 })
 export class ChatModule {}

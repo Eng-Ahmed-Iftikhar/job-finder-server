@@ -16,10 +16,10 @@ import { WebsitesModule } from './websites/websites.module';
 import { ConnectionsModule } from './connections/connections.module';
 import { ConnectionRequestsModule } from './connection-requests/connection-requests.module';
 import { JobsModule } from './jobs/jobs.module';
-
 import { SearchModule } from './search/search.module';
 import { LocationModule } from './location/location.module';
 import { ChatModule } from './chat/chat.module';
+import { SocketModule } from './socket/socket.module';
 
 @Module({
   imports: [
@@ -31,6 +31,7 @@ import { ChatModule } from './chat/chat.module';
     UsersModule,
     FilesModule,
     PrismaModule,
+    SocketModule,
     EmailModule,
     SkillsModule,
     NotificationSettingsModule,

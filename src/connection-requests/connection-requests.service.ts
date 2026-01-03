@@ -7,14 +7,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConnectionRequestDto } from './dto/create-connection-request.dto';
 import { UpdateConnectionRequestDto } from './dto/update-connection-request.dto';
-import { ConnectionRequestGateway } from './connection-request.gateway';
+import { SocketService } from 'src/socket/socket.service';
 
 @Injectable()
 export class ConnectionRequestsService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => ConnectionRequestGateway))
-    private readonly connectionRequestGateway: ConnectionRequestGateway,
+    @Inject(forwardRef(() => SocketService))
+    private readonly socketService: SocketService,
   ) {}
 
   async create(senderId: string, dto: CreateConnectionRequestDto) {
@@ -26,12 +26,23 @@ export class ConnectionRequestsService {
     if (!sender) throw new NotFoundException('Sender not found');
     if (!receiver) throw new NotFoundException('Receiver not found');
 
-    return this.prisma.connectionRequest.create({
+    const connectionRequest = await this.prisma.connectionRequest.create({
       data: {
         senderId,
         receiverId: dto.receiverId,
         status: 'PENDING',
       },
+      include: { sender: true, receiver: true },
+    });
+    const connectionRequestsCount = await this.prisma.connectionRequest.count({
+      where: {
+        OR: [{ senderId }, { receiverId: dto.receiverId }],
+        status: 'PENDING',
+      },
+    });
+    this.socketService.handleNewConnection(dto.receiverId, {
+      count: connectionRequestsCount,
+      connectionRequest,
     });
   }
 
@@ -186,17 +197,15 @@ export class ConnectionRequestsService {
       include: { sender: true },
     });
     // Create connection
-    await this.prisma.connection.create({
+    const connection = await this.prisma.connection.create({
       data: {
         connectionRequestId: req.id,
       },
-    });
-    const connectionRequestsCount = await this.prisma.connectionRequest.count({
-      where: {
-        OR: [{ senderId: req.senderId }, { receiverId: req.senderId }],
-        status: 'PENDING',
+      include: {
+        connectionRequest: { include: { sender: true, receiver: true } },
       },
     });
+
     const connectionCounts = await this.prisma.connection.count({
       where: {
         OR: [
@@ -206,14 +215,10 @@ export class ConnectionRequestsService {
       },
     });
 
-    this.connectionRequestGateway.handleConnectionRequestCount(
-      req.senderId,
-      connectionRequestsCount,
-    );
-    this.connectionRequestGateway.handleConnectionCount(
-      req.senderId,
-      connectionCounts,
-    );
+    this.socketService.handleConnectionAccepted(req.senderId, {
+      count: connectionCounts,
+      connection,
+    });
 
     return {
       id: req.id,
@@ -227,6 +232,7 @@ export class ConnectionRequestsService {
 
   async rejectRequest(id: string) {
     await this.ensureExists(id);
+
     const req = await this.prisma.connectionRequest.update({
       where: { id },
       data: { status: 'REJECTED' },
@@ -240,10 +246,10 @@ export class ConnectionRequestsService {
       },
     });
 
-    this.connectionRequestGateway.handleConnectionRequestCount(
-      req.senderId,
-      connectionRequestsCount,
-    );
+    this.socketService.handleConnectionCanceled(req.senderId, {
+      count: connectionRequestsCount,
+      connectionRequest: req,
+    });
 
     return req;
   }
