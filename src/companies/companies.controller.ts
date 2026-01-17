@@ -98,8 +98,9 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Get a company by id' })
   @ApiOkResponse({ type: CompanyResponseDto })
   @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
-  findOne(@Param('id') id: string) {
-    return this.companiesService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.id as string;
+    return this.companiesService.findOne(id, userId);
   }
 
   @Patch(':id')

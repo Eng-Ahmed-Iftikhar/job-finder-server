@@ -427,7 +427,7 @@ export class ChatService {
                 // Exclude messages from the blocked user in the time frame
                 return {
                   ...baseFilter,
-                  senderId: block.chatUserId as string,
+                  senderId: block?.chatUserId as string,
                 };
               }),
           };
@@ -442,7 +442,9 @@ export class ChatService {
           },
           take: 2,
         });
-
+        if (messages.length === 0) {
+          return null;
+        }
         // Group unblocked messages by date in [{date, data: [...]}, ...] format
         const grouped: { [date: string]: any[] } = {
           [new Date().toISOString().slice(0, 10)]: [],
@@ -475,6 +477,21 @@ export class ChatService {
   async getChat(id: string): Promise<any> {
     return await this.prisma.chat.findUnique({
       where: { id },
+      include: {
+        users: { include: { user: { include: { profile: true } } } },
+        group: true,
+      },
+    });
+  }
+
+  async getPrivateChat(userIds: string[]): Promise<any> {
+    return await this.prisma.chat.findFirst({
+      where: {
+        type: 'PRIVATE',
+        users: {
+          every: { userId: { in: userIds } },
+        },
+      },
       include: {
         users: { include: { user: { include: { profile: true } } } },
         group: true,
@@ -526,9 +543,7 @@ export class ChatService {
         group: true,
       },
     });
-    dto.userIds.forEach((id) => {
-      this.socketService.handleNewChat(id, chat);
-    });
+
     return chat;
   }
 

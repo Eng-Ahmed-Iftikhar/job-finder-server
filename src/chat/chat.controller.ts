@@ -76,6 +76,19 @@ export class ChatController {
     });
   }
 
+  @Get('/users/:userId')
+  @ApiOperation({ summary: 'Get or create a private chat between two users' })
+  @ApiParam({ name: 'userId', required: true })
+  @ApiResponse({
+    status: 200,
+    description: 'Private chat between the two users.',
+    type: Object,
+  })
+  getPrivateChat(@Param('userId') otherUserId: string, @Request() req: any) {
+    const userId = req.user.id as string;
+    return this.chatService.getPrivateChat([userId, otherUserId]);
+  }
+
   @Get('unread-messages')
   @ApiOperation({
     summary: 'Get all unread (not received) messages for the current user',

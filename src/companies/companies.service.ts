@@ -112,14 +112,14 @@ export class CompaniesService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const company = await this.prisma.company.findUnique({
       where: { id },
       include: {
         profile: {
           include: { location: true, employer: true, website: true },
         },
-        followers: true,
+        followers: { where: { followerId: userId } },
       },
     });
     if (!company) throw new NotFoundException('Company not found');

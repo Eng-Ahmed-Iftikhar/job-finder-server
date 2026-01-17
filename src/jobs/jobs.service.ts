@@ -50,7 +50,7 @@ export class JobsService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const job = await this.prisma.job.findUnique({
       where: { id },
       include: {
@@ -60,16 +60,28 @@ export class JobsService {
             employer: {
               include: {
                 companyProfiles: {
-                  include: { company: true, location: true, website: true },
+                  include: {
+                    company: {
+                      include: { followers: { where: { followerId: userId } } },
+                    },
+                    location: true,
+                    website: true,
+                  },
                 },
               },
             },
           },
         },
+        savedBy: { where: { employeeId: userId } },
+        employees: { where: { employeeId: userId } },
       },
     });
     if (!job) throw new NotFoundException('Job not found');
-    return job;
+    return {
+      ...job,
+      isSaved: job.savedBy.length > 0,
+      isApplied: job.employees.length > 0,
+    };
   }
 
   async findSuggested({
@@ -77,11 +89,13 @@ export class JobsService {
     location = '',
     page,
     limit,
+    userId,
   }: {
     search?: string;
     location?: string;
     page: number;
     limit: number;
+    userId: string;
   }) {
     const take = Math.max(1, limit);
     const skip = Math.max(0, (Math.max(1, page) - 1) * take);
@@ -122,6 +136,10 @@ export class JobsService {
       };
     }
 
+    const excludeAppliedFilter: Record<string, any> = userId
+      ? { employees: { none: { employeeId: userId } } }
+      : {};
+
     const where: Record<string, any> = {
       AND: [
         { status: JobStatus.PUBLISHED },
@@ -133,6 +151,7 @@ export class JobsService {
           ],
         },
         locationFilter,
+        excludeAppliedFilter,
       ].filter((f) => Object.keys(f).length > 0),
     };
 
@@ -152,6 +171,7 @@ export class JobsService {
               },
             },
           },
+          savedBy: { where: { employeeId: userId } },
         },
         orderBy: [{ publishAt: 'desc' }, { createdAt: 'desc' }],
         skip,
@@ -160,7 +180,12 @@ export class JobsService {
       this.prisma.job.count({ where }),
     ]);
 
-    return { data, total, page, pageSize: take };
+    return {
+      data: data.map((job) => ({ ...job, isSaved: job.savedBy.length > 0 })),
+      total,
+      page,
+      pageSize: take,
+    };
   }
 
   async update(id: string, dto: UpdateJobDto) {
@@ -204,7 +229,23 @@ export class JobsService {
   }
 
   async save(jobId: string, employeeId: string) {
-    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        location: true,
+        employers: {
+          include: {
+            employer: {
+              include: {
+                companyProfiles: {
+                  include: { company: true, location: true, website: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
     if (!job) throw new NotFoundException('Job not found');
 
     const existing = await this.prisma.savedJob
@@ -218,7 +259,8 @@ export class JobsService {
 
     if (existing) throw new ConflictException('Already saved this job');
 
-    return this.prisma.savedJob.create({ data: { jobId, employeeId } });
+    await this.prisma.savedJob.create({ data: { jobId, employeeId } });
+    return job;
   }
 
   async unsave(jobId: string, employeeId: string) {
@@ -228,9 +270,10 @@ export class JobsService {
 
     if (!existing) throw new NotFoundException('Saved job not found');
 
-    return this.prisma.savedJob.delete({
+    await this.prisma.savedJob.delete({
       where: { jobId_employeeId: { jobId, employeeId } },
     });
+    return { id: jobId };
   }
 
   async listSavedIds(employeeId: string) {
@@ -308,6 +351,7 @@ export class JobsService {
               },
             },
           },
+          savedBy: { where: { employeeId } },
         },
         orderBy: [{ publishAt: 'desc' }, { createdAt: 'desc' }],
         skip,
@@ -316,7 +360,12 @@ export class JobsService {
       this.prisma.job.count({ where }),
     ]);
 
-    return { data, total, page, pageSize: take };
+    return {
+      data: data.map((job) => ({ ...job, isSaved: job.savedBy.length > 0 })),
+      total,
+      page,
+      pageSize: take,
+    };
   }
 
   private async ensureExists(id: string) {

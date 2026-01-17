@@ -84,16 +84,19 @@ export class JobsController {
   })
   @Roles(UserRole.EMPLOYEE)
   suggested(
+    @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
     @Query('search') search: string,
     @Query('location') location?: string,
   ) {
+    const employeeId = req.user?.id as string;
     return this.service.findSuggested({
       search,
       location,
       page,
       limit: pageSize,
+      userId: employeeId,
     });
   }
   @Get('savedIds')
@@ -174,8 +177,9 @@ export class JobsController {
   @ApiOperation({ summary: 'Get a job by id' })
   @ApiOkResponse({ type: JobResponseDto })
   @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.id as string;
+    return this.service.findOne(id, userId);
   }
 
   @Patch(':id')

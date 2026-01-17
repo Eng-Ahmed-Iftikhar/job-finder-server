@@ -27,28 +27,31 @@ export class ConnectionsService {
     const limit = params.pageSize || 10;
     const skip = (page - 1) * limit;
 
-    // Build search filter
-    const searchFilter = params.search
+    const searchTerm = params.search?.trim();
+    // Build search filter against nested relations (profile names + email string on Email relation)
+    const searchFilter = searchTerm
       ? {
           OR: [
             {
               connectionRequest: {
                 sender: {
                   profile: {
-                    OR: [
-                      {
-                        firstName: {
-                          contains: params.search,
-                          mode: 'insensitive',
+                    is: {
+                      OR: [
+                        {
+                          firstName: {
+                            contains: searchTerm,
+                            mode: 'insensitive',
+                          },
                         },
-                      },
-                      {
-                        lastName: {
-                          contains: params.search,
-                          mode: 'insensitive',
+                        {
+                          lastName: {
+                            contains: searchTerm,
+                            mode: 'insensitive',
+                          },
                         },
-                      },
-                    ],
+                      ],
+                    },
                   },
                 },
               },
@@ -57,20 +60,22 @@ export class ConnectionsService {
               connectionRequest: {
                 receiver: {
                   profile: {
-                    OR: [
-                      {
-                        firstName: {
-                          contains: params.search,
-                          mode: 'insensitive',
+                    is: {
+                      OR: [
+                        {
+                          firstName: {
+                            contains: searchTerm,
+                            mode: 'insensitive',
+                          },
                         },
-                      },
-                      {
-                        lastName: {
-                          contains: params.search,
-                          mode: 'insensitive',
+                        {
+                          lastName: {
+                            contains: searchTerm,
+                            mode: 'insensitive',
+                          },
                         },
-                      },
-                    ],
+                      ],
+                    },
                   },
                 },
               },
@@ -78,32 +83,39 @@ export class ConnectionsService {
             {
               connectionRequest: {
                 sender: {
-                  email: { contains: params.search, mode: 'insensitive' },
+                  email: {
+                    is: {
+                      email: { contains: searchTerm, mode: 'insensitive' },
+                    },
+                  },
                 },
               },
             },
             {
               connectionRequest: {
                 receiver: {
-                  email: { contains: params.search, mode: 'insensitive' },
+                  email: {
+                    is: {
+                      email: { contains: searchTerm, mode: 'insensitive' },
+                    },
+                  },
                 },
               },
             },
           ],
         }
-      : {};
+      : undefined;
 
-    const where: Record<string, any> = {
-      AND: [
-        {
-          OR: [
-            { connectionRequest: { senderId: userId } },
-            { connectionRequest: { receiverId: userId } },
-          ],
-        },
-        searchFilter,
+    const baseFilter = {
+      OR: [
+        { connectionRequest: { senderId: userId } },
+        { connectionRequest: { receiverId: userId } },
       ],
     };
+
+    const where: Record<string, any> = searchFilter
+      ? { AND: [baseFilter, searchFilter] }
+      : baseFilter;
 
     // Get total count
     const total = await this.prisma.connection.count({ where });
