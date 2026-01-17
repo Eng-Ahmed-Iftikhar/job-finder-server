@@ -4,11 +4,13 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ConnectionRequestsService } from './connection-requests.service';
 import { ConnectionRequestsController } from './connection-requests.controller';
 import { SocketModule } from 'src/socket/socket.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     PrismaModule,
     SocketModule,
+    NotificationsModule,
     forwardRef(() => ConnectionRequestsModule),
   ],
   providers: [ConnectionRequestsService],

@@ -4,10 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConnectionRequestDto } from './dto/create-connection-request.dto';
 import { UpdateConnectionRequestDto } from './dto/update-connection-request.dto';
 import { SocketService } from 'src/socket/socket.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ConnectionRequestsService {
@@ -15,6 +17,7 @@ export class ConnectionRequestsService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => SocketService))
     private readonly socketService: SocketService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(senderId: string, dto: CreateConnectionRequestDto) {
@@ -43,6 +46,16 @@ export class ConnectionRequestsService {
     this.socketService.handleNewConnection(dto.receiverId, {
       count: connectionRequestsCount,
       connectionRequest,
+    });
+
+    await this.notificationsService.create({
+      userId: dto.receiverId,
+      text: 'You have a new connection request',
+      type: NotificationType.CONNECTION,
+      metaData: {
+        connectionRequestId: connectionRequest.id,
+        senderId,
+      },
     });
   }
 
@@ -220,6 +233,16 @@ export class ConnectionRequestsService {
       connection,
     });
 
+    await this.notificationsService.create({
+      userId: req.senderId,
+      text: 'Your connection request was accepted',
+      type: NotificationType.CONNECTION,
+      metaData: {
+        connectionRequestId: req.id,
+        connectionId: connection.id,
+      },
+    });
+
     return {
       id: req.id,
       status: req.status,
@@ -249,6 +272,13 @@ export class ConnectionRequestsService {
     this.socketService.handleConnectionCanceled(req.senderId, {
       count: connectionRequestsCount,
       connectionRequest: req,
+    });
+
+    await this.notificationsService.create({
+      userId: req.senderId,
+      text: 'Your connection request was rejected',
+      type: NotificationType.CONNECTION,
+      metaData: { connectionRequestId: req.id },
     });
 
     return req;

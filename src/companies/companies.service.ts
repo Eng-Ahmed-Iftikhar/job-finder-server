@@ -1,11 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CompaniesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   create(dto: CreateCompanyDto) {
     return this.prisma.company.create({
@@ -142,6 +147,14 @@ export class CompaniesService {
   async follow(companyId: string, employeeId: string) {
     await this.ensureExists(companyId);
 
+    const companyProfile = await this.prisma.companyProfile.findUnique({
+      where: { companyId },
+      include: { company: true },
+    });
+
+    if (!companyProfile)
+      throw new NotFoundException('Company profile not found');
+
     const existing = await this.prisma.companyFollower
       .findUnique({
         where: { companyId_followerId: { companyId, followerId: employeeId } },
@@ -157,9 +170,22 @@ export class CompaniesService {
       return { message: 'Already following this company' };
     }
 
-    return this.prisma.companyFollower.create({
+    const followRecord = await this.prisma.companyFollower.create({
       data: { companyId, followerId: employeeId },
     });
+
+    await this.notificationsService.create({
+      userId: companyProfile.employerId,
+      text: 'A user followed your company',
+      type: NotificationType.FOLLOW,
+      metaData: {
+        companyId,
+        followerId: employeeId,
+        companyName: companyProfile.company?.name,
+      },
+    });
+
+    return followRecord;
   }
 
   async unfollow(companyId: string, employeeId: string) {

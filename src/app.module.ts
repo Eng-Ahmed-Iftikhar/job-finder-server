@@ -20,6 +20,7 @@ import { SearchModule } from './search/search.module';
 import { LocationModule } from './location/location.module';
 import { ChatModule } from './chat/chat.module';
 import { SocketModule } from './socket/socket.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { SocketModule } from './socket/socket.module';
     SearchModule,
     LocationModule,
     ChatModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

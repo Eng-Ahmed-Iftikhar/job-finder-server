@@ -30,4 +30,11 @@ export class SocketService {
   handleConnectionCanceled(userId: string, message: any) {
     this.gateway.emitToUser(userId, SOCKET_EVENT.CONNECTION_CANCELED, message);
   }
+  handleNewNotification(userId: string, notification: any) {
+    this.gateway.emitToUser(
+      userId,
+      SOCKET_EVENT.NEW_NOTIFICATION as string,
+      notification,
+    );
+  }
 }
