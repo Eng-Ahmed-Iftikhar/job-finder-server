@@ -178,6 +178,7 @@ export class CompaniesService {
       userId: companyProfile.employerId,
       text: 'A user followed your company',
       type: NotificationType.FOLLOW,
+      icon: 'heart',
       metaData: {
         companyId,
         followerId: employeeId,

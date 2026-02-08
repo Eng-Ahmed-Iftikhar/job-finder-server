@@ -245,7 +245,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.OWNER, UserRole.EMPLOYEE)
   @ApiOperation({ summary: 'Get user by ID (Admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User retrieved successfully' })

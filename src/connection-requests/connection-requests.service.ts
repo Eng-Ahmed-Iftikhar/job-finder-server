@@ -5,11 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { NotificationType } from '@prisma/client';
+import { SocketService } from 'src/socket/socket.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConnectionRequestDto } from './dto/create-connection-request.dto';
 import { UpdateConnectionRequestDto } from './dto/update-connection-request.dto';
-import { SocketService } from 'src/socket/socket.service';
-import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ConnectionRequestsService {
@@ -52,6 +52,7 @@ export class ConnectionRequestsService {
       userId: dto.receiverId,
       text: 'You have a new connection request',
       type: NotificationType.CONNECTION,
+      icon: 'user-plus',
       metaData: {
         connectionRequestId: connectionRequest.id,
         senderId,
@@ -207,7 +208,7 @@ export class ConnectionRequestsService {
     const req = await this.prisma.connectionRequest.update({
       where: { id },
       data: { status: 'ACCEPTED' },
-      include: { sender: true },
+      include: { sender: true, receiver: true },
     });
     // Create connection
     const connection = await this.prisma.connection.create({
@@ -233,15 +234,32 @@ export class ConnectionRequestsService {
       connection,
     });
 
-    await this.notificationsService.create({
-      userId: req.senderId,
-      text: 'Your connection request was accepted',
-      type: NotificationType.CONNECTION,
-      metaData: {
-        connectionRequestId: req.id,
-        connectionId: connection.id,
+    // Update existing notification for receiver
+    const existingNotification = await this.prisma.notification.findFirst({
+      where: {
+        userId: req.receiverId,
+        metaData: {
+          path: ['connectionRequestId'],
+          equals: id,
+        },
       },
     });
+
+    if (existingNotification) {
+      await this.notificationsService.update(existingNotification.id, {
+        text: 'Connection request accepted',
+        read: true,
+        metaData: {
+          ...(existingNotification.metaData as object),
+          status: 'ACCEPTED',
+          texts: [
+            ...((existingNotification.metaData as any)?.texts || []),
+            existingNotification.text,
+          ],
+          connectionId: connection.id,
+        },
+      });
+    }
 
     return {
       id: req.id,
@@ -259,7 +277,7 @@ export class ConnectionRequestsService {
     const req = await this.prisma.connectionRequest.update({
       where: { id },
       data: { status: 'REJECTED' },
-      include: { sender: true },
+      include: { sender: true, receiver: true },
     });
 
     const connectionRequestsCount = await this.prisma.connectionRequest.count({
@@ -274,12 +292,31 @@ export class ConnectionRequestsService {
       connectionRequest: req,
     });
 
-    await this.notificationsService.create({
-      userId: req.senderId,
-      text: 'Your connection request was rejected',
-      type: NotificationType.CONNECTION,
-      metaData: { connectionRequestId: req.id },
+    // Update existing notification for receiver
+    const existingNotification = await this.prisma.notification.findFirst({
+      where: {
+        userId: req.receiverId,
+        metaData: {
+          path: ['connectionRequestId'],
+          equals: id,
+        },
+      },
     });
+
+    if (existingNotification) {
+      await this.notificationsService.update(existingNotification.id, {
+        text: 'Connection request rejected',
+        read: true,
+        metaData: {
+          ...(existingNotification.metaData as object),
+          status: 'REJECTED',
+          texts: [
+            ...((existingNotification.metaData as any)?.texts || []),
+            existingNotification.text,
+          ],
+        },
+      });
+    }
 
     return req;
   }

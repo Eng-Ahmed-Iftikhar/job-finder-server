@@ -6,6 +6,9 @@ import {
   Query,
   Request,
   UseGuards,
+  Patch,
+  Param,
+  Body,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -13,12 +16,14 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
+  ApiBody,
 } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../types/user.types';
+import { MarkBulkReadDto } from './dto/mark-bulk-read.dto';
 
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -40,5 +45,24 @@ export class NotificationsController {
   ) {
     const userId = req.user?.id as string;
     return this.notificationsService.listForUser(userId, { page, pageSize });
+  }
+
+  @Patch(':id/read')
+  @ApiOperation({ summary: 'Mark a single notification as read' })
+  @ApiOkResponse({ description: 'Notification marked as read' })
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  markAsRead(@Request() req: any, @Param('id') notificationId: string) {
+    const userId = req.user?.id as string;
+    return this.notificationsService.markAsRead(notificationId, userId);
+  }
+
+  @Patch('read')
+  @ApiOperation({ summary: 'Mark multiple notifications as read' })
+  @ApiOkResponse({ description: 'Notifications marked as read' })
+  @ApiBody({ type: MarkBulkReadDto })
+  @Roles(UserRole.EMPLOYER, UserRole.EMPLOYEE)
+  markBulkAsRead(@Request() req: any, @Body() body: MarkBulkReadDto) {
+    const userId = req.user?.id as string;
+    return this.notificationsService.markBulkAsRead(body.ids, userId);
   }
 }

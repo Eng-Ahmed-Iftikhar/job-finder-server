@@ -99,6 +99,9 @@ export class UsersService {
   async findUserById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
+      omit: {
+        password: true,
+      },
       include: {
         email: true,
         profile: true,

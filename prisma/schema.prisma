@@ -420,6 +420,7 @@ model Notification {
   type      NotificationType
   metaData  Json?    @map("meta_data")
   userId    String   @map("user_id")
+  read      Boolean  @default(false)
   icon      String?
   podcast   Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
